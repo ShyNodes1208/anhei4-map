@@ -16,3 +16,4 @@ task-*-report.md
 Thumbs.db
 Desktop.ini
 .DS_Store
+.worktrees/
