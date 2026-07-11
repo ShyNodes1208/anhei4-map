@@ -5,8 +5,12 @@ namespace Anhei4Map.Tests;
 
 public class JsonSettingsStoreTests
 {
-    private static string CreateTempDirectory() =>
-        Path.Combine(Path.GetTempPath(), "Anhei4Map.Tests", Guid.NewGuid().ToString("N"));
+    private static string CreateTempDirectory()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Anhei4Map.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        return directory;
+    }
 
     private static void CleanupTempDirectory(string directory)
     {
@@ -161,6 +165,193 @@ public class JsonSettingsStoreTests
             Assert.Contains("\"InitialState\"", json);
             Assert.Contains("\"Width\"", json);
             Assert.Contains("\"Opacity\"", json);
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Load_CorruptedJson_ReturnsDefaults()
+    {
+        var directory = CreateTempDirectory();
+
+        try
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            await File.WriteAllTextAsync(settingsPath, "{ not valid json }}}");
+
+            var store = new JsonSettingsStore(directory);
+            var expected = AppSettings.CreateDefaults();
+
+            var loaded = await store.LoadAsync();
+
+            Assert.Equal(expected.Placement.Width, loaded.Placement.Width);
+            Assert.Equal(expected.Placement.Height, loaded.Placement.Height);
+            Assert.Equal(expected.ZoomLevel, loaded.ZoomLevel);
+            Assert.Equal(expected.InitialState, loaded.InitialState);
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Load_CorruptedJson_RenamesToBak()
+    {
+        var directory = CreateTempDirectory();
+
+        try
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            await File.WriteAllTextAsync(settingsPath, "{ corrupted");
+
+            var store = new JsonSettingsStore(directory);
+            await store.LoadAsync();
+
+            Assert.True(File.Exists(Path.Combine(directory, "settings.json.bak")));
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Load_CorruptedJson_BakContentsMatchOriginal()
+    {
+        var directory = CreateTempDirectory();
+        const string corruptedJson = "{ corrupted json content";
+
+        try
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            await File.WriteAllTextAsync(settingsPath, corruptedJson);
+
+            var store = new JsonSettingsStore(directory);
+            await store.LoadAsync();
+
+            var bakContent = await File.ReadAllTextAsync(Path.Combine(directory, "settings.json.bak"));
+            Assert.Equal(corruptedJson, bakContent);
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Load_ExistingBak_NotOverwrittenByNewCorruption()
+    {
+        var directory = CreateTempDirectory();
+        const string originalBakContent = "original bak content";
+        const string corruptedJson = "{ new corruption";
+
+        try
+        {
+            var bakPath = Path.Combine(directory, "settings.json.bak");
+            var settingsPath = Path.Combine(directory, "settings.json");
+            await File.WriteAllTextAsync(bakPath, originalBakContent);
+            await File.WriteAllTextAsync(settingsPath, corruptedJson);
+
+            var store = new JsonSettingsStore(directory);
+            await store.LoadAsync();
+
+            var preservedBak = await File.ReadAllTextAsync(bakPath);
+            Assert.Equal(originalBakContent, preservedBak);
+
+            var timestampedBaks = Directory.GetFiles(directory)
+                .Where(path => Path.GetFileName(path).StartsWith("settings.json.bak.", StringComparison.Ordinal))
+                .ToArray();
+            Assert.Single(timestampedBaks);
+            var newBakContent = await File.ReadAllTextAsync(timestampedBaks[0]);
+            Assert.Equal(corruptedJson, newBakContent);
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task SaveAtomic_Success_FormalFileCorrect()
+    {
+        var directory = CreateTempDirectory();
+
+        try
+        {
+            var store = new JsonSettingsStore(directory);
+            var defaults = AppSettings.CreateDefaults();
+            var settings = defaults with { ZoomLevel = 2.5 };
+
+            await store.SaveAsync(settings);
+
+            var json = await File.ReadAllTextAsync(Path.Combine(directory, "settings.json"));
+            Assert.Contains("\"ZoomLevel\": 2.5", json);
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task SaveAtomic_Success_TmpCleaned()
+    {
+        var directory = CreateTempDirectory();
+
+        try
+        {
+            var store = new JsonSettingsStore(directory);
+            await store.SaveAsync(AppSettings.CreateDefaults());
+
+            Assert.False(File.Exists(Path.Combine(directory, "settings.json.tmp")));
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Load_ValidJson_DoesNotCreateBak()
+    {
+        var directory = CreateTempDirectory();
+
+        try
+        {
+            var store = new JsonSettingsStore(directory);
+            await store.SaveAsync(AppSettings.CreateDefaults());
+            await store.LoadAsync();
+
+            Assert.False(File.Exists(Path.Combine(directory, "settings.json.bak")));
+            Assert.Empty(Directory.GetFiles(directory)
+                .Where(path => Path.GetFileName(path).StartsWith("settings.json.bak.", StringComparison.Ordinal)));
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Load_FileNotFound_ReturnsDefaults()
+    {
+        var directory = CreateTempDirectory();
+
+        try
+        {
+            var store = new JsonSettingsStore(directory);
+            var expected = AppSettings.CreateDefaults();
+
+            var loaded = await store.LoadAsync();
+
+            Assert.Equal(expected.Placement.Width, loaded.Placement.Width);
+            Assert.Equal(expected.Placement.Height, loaded.Placement.Height);
+            Assert.Equal(expected.ZoomLevel, loaded.ZoomLevel);
+            Assert.Equal(expected.InitialState, loaded.InitialState);
         }
         finally
         {

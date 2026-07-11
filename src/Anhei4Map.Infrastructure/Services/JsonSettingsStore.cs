@@ -7,6 +7,8 @@ namespace Anhei4Map.Infrastructure.Services;
 public class JsonSettingsStore
 {
     private readonly string _filePath;
+    private readonly string _tmpFilePath;
+    private readonly string _bakFilePath;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -17,6 +19,8 @@ public class JsonSettingsStore
     public JsonSettingsStore(string directory)
     {
         _filePath = Path.Combine(directory, "settings.json");
+        _tmpFilePath = Path.Combine(directory, "settings.json.tmp");
+        _bakFilePath = Path.Combine(directory, "settings.json.bak");
     }
 
     public async Task SaveAsync(AppSettings settings)
@@ -28,18 +32,71 @@ public class JsonSettingsStore
         }
 
         var json = JsonSerializer.Serialize(settings, JsonOptions);
-        await File.WriteAllTextAsync(_filePath, json, Encoding.UTF8);
+        await File.WriteAllTextAsync(_tmpFilePath, json, Encoding.UTF8);
+        File.Move(_tmpFilePath, _filePath, overwrite: true);
     }
 
     public async Task<AppSettings> LoadAsync()
     {
+        CleanupResidualTmp();
+
         if (!File.Exists(_filePath))
         {
             return AppSettings.CreateDefaults();
         }
 
-        var json = await File.ReadAllTextAsync(_filePath, Encoding.UTF8);
-        return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions)
-               ?? AppSettings.CreateDefaults();
+        string json;
+        try
+        {
+            json = await File.ReadAllTextAsync(_filePath, Encoding.UTF8);
+        }
+        catch (IOException)
+        {
+            throw;
+        }
+
+        try
+        {
+            var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
+            if (settings is null)
+            {
+                BackupCorruptedFile();
+                return AppSettings.CreateDefaults();
+            }
+
+            return settings;
+        }
+        catch (JsonException)
+        {
+            BackupCorruptedFile();
+            return AppSettings.CreateDefaults();
+        }
+    }
+
+    private void CleanupResidualTmp()
+    {
+        if (File.Exists(_tmpFilePath))
+        {
+            File.Delete(_tmpFilePath);
+        }
+    }
+
+    private void BackupCorruptedFile()
+    {
+        if (!File.Exists(_filePath))
+        {
+            return;
+        }
+
+        if (!File.Exists(_bakFilePath))
+        {
+            File.Move(_filePath, _bakFilePath);
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(_filePath)!;
+        var timestamp = DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmss");
+        var timestampedBakPath = Path.Combine(directory, $"settings.json.bak.{timestamp}");
+        File.Move(_filePath, timestampedBakPath);
     }
 }
