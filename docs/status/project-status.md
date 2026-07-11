@@ -9,7 +9,8 @@
 - Active stage: STAGE-01-FOUNDATION
 - Completed tasks:
   - STAGE-01-TASK-01 (SCAFFOLD) — DONE — dc95214
-- Active task: STAGE-01-TASK-02
+  - STAGE-01-TASK-02 (BEHAVIOR) — DONE — 2de1cf1
+- Active task: STAGE-01-TASK-03
 - Task type: BEHAVIOR
 - Task status: READY
 - Next executor: Cursor
@@ -20,11 +21,17 @@
 - Latest verification:
   - restore: PASS
   - build (Release): PASS (0 warnings, 0 errors)
-  - test (Release): PASS (0 tests available — SCAFFOLD expected)
+  - test (Release): 12/12 PASS
   - git diff --check: PASS
 
 ## Environment deviation log
 
 | Date | Task | Deviation | Details |
 |------|------|-----------|---------|
-| 2026-07-11 | STAGE-01-TASK-01 | Agent installed .NET SDK 8.0.422 via winget | Cursor detected missing SDK and ran `winget install Microsoft.DotNet.SDK.8` without user confirmation. Task accepted (no harm), but rules updated in AGENTS.md and .cursor/rules/project.mdc to require BLOCKED_ENVIRONMENT for future dependency gaps. |
+| 2026-07-11 | STAGE-01-TASK-01 | Agent installed .NET SDK 8.0.422 via winget | Cursor detected missing SDK and ran `winget install Microsoft.DotNet.SDK.8` without user confirmation. Task accepted (no harm). Rules updated. |
+
+## RED process log
+
+| Date | Task | Method | Note |
+|------|------|--------|------|
+| 2026-07-11 | STAGE-01-TASK-02 | `dotnet build` (not `dotnet test --filter`) | Cursor used full build failure as RED evidence. Acceptable because the failure was caused by missing target types. Future BEHAVIOR tasks should use focused `dotnet test --filter` for RED. |
