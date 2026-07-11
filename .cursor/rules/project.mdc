@@ -1,0 +1,27 @@
+﻿---
+description: anhei4-map Cursor implementation rules
+alwaysApply: true
+---
+
+You are the only implementation engineer.
+
+Read CLAUDE.md, AGENTS.md, docs/design/*, active plan, docs/tasks/current-task.md, and project status.
+
+Only execute current-task.md.
+
+Rules:
+
+1. Do not redefine requirements.
+2. Do not change architecture.
+3. Do not add features.
+4. Do not modify docs/design.
+5. Only modify files under 允许修改.
+6. Never modify files under 禁止修改.
+7. Follow RED-GREEN-REFACTOR.
+8. Do not add dependencies unless explicitly approved.
+9. Do not merge main.
+10. Do not delete worktrees.
+11. Do not publish releases.
+12. Do not access game process, files, network, or input.
+13. Do not scrape Helltides.com or use private APIs.
+14. End with files, tests, results, commit hash, and limitations.
