@@ -57,3 +57,25 @@
 ## 事实来源优先级
 
 CLAUDE.md → AGENTS.md → docs/design → 当前计划 → current-task → Git → 聊天内容。
+
+## Gstack 技能
+
+Gstack 已安装于 `~/.claude/skills/gstack`（v1.60.1.0）。
+
+本项目的 Gstack 技能仅用于设计、架构、评审和调查阶段，由 Claude Code + DeepSeek 调用。不得通过 Gstack 技能直接修改 src 或 tests。
+
+### 可用技能
+
+| 技能 | 用途 | 项目阶段 |
+|------|------|----------|
+| `/office-hours` | 需求诊断与头脑风暴 | 设计 |
+| `/plan-ceo-review` | CEO 视角战略评审 | 设计 |
+| `/plan-eng-review` | 工程架构评审 | 设计 |
+| `/review` | 代码评审（含专家面板） | 开发 |
+| `/qa` | QA 测试与验证 | 开发 |
+| `/cso` | OWASP/STRIDE 安全审计 | 开发/发布 |
+| `/investigate` | 系统化根因调查 | 调试 |
+
+### 角色分工不变
+
+Gstack 技能遵循 CLAUDE.md 既定角色分工：Claude Code 负责产品、架构、评审、裁决、合并和发布；Cursor 负责写代码；Codex 负责独立审核。Gstack 不引入自动编码行为。
