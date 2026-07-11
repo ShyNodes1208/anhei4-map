@@ -1,12 +1,24 @@
-﻿# Project status
+# Project status
 
 - Repository: https://github.com/ShyNodes1208/anhei4-map.git
 - Main branch: main
-- Current phase: BOOTSTRAP
-- Design baseline: not created
-- Active branch: main
-- Active worktree: D:\AIProjects\anhei4-map
-- Active stage: none
-- Active task: none
-- Review status: not available
-- Next: install and verify Gstack and Superpowers
+- Current phase: STAGE-01-FOUNDATION
+- Design baseline: design-baseline-v1 (tag, c3fe31c)
+- Active branch: feature/01-foundation
+- Active worktree: D:\AIProjects\anhei4-map-worktrees\stage-01-foundation
+- Active stage: STAGE-01-FOUNDATION
+- Active task: STAGE-01-TASK-01
+- Task status: READY
+- Review status:
+  - CEO Review: CLEAN (2026-07-11)
+  - Eng Review: CLEAN (2026-07-11)
+  - Design Review: not run
+- Design docs:
+  - docs/design/01-product-design.md (APPROVED)
+  - docs/design/02-architecture.md
+  - docs/design/03-test-strategy.md
+  - docs/design/04-security-boundary.md
+  - docs/design/05-acceptance-criteria.md
+- Stage plan: docs/plans/stage-01-foundation-plan.md
+- Next executor: Cursor
+- Next: Cursor executes STAGE-01-TASK-01
