@@ -64,6 +64,19 @@
 - 增加人工 smoke test；
 - 不写没有断言价值的假测试。
 
+## 环境依赖规则（所有 Agent）
+
+1. Agent 可以检测系统依赖（如 `dotnet --version`、`node --version`）。
+2. Agent **不得**自行安装、升级或卸载系统软件。
+3. 缺少依赖时必须返回 **BLOCKED_ENVIRONMENT**。
+4. 必须列出：
+   - 缺少的工具
+   - 最低版本
+   - 推荐官方安装方式
+   - 安装影响
+5. 只有用户明确确认后，才能执行安装。
+6. **不得**自行使用 winget、Chocolatey、npm -g、PowerShell 安装脚本或修改系统 PATH。
+
 ## Codex Review guidelines
 
 重点检查：

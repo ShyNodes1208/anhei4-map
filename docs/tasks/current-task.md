@@ -1,10 +1,13 @@
 # 当前任务
 
 ## 任务编号
-STAGE-01-TASK-01
+STAGE-01-TASK-02
+
+## 任务名称
+AppSettings 默认值和设置校验
 
 ## 任务类型
-SCAFFOLD
+BEHAVIOR
 
 ## 状态
 READY
@@ -13,144 +16,89 @@ READY
 STAGE-01-FOUNDATION
 
 ## 前置条件
-无（绿色场项目）。当前分支 `feature/01-foundation` 基于 `origin/main`(@44dbada)，无 src/、tests/。
+STAGE-01-TASK-01 完成——solution 和四个项目已创建，`dotnet build` 和 `dotnet test` 通过。
 
 ## 任务目标
-创建 .NET 8 解决方案骨架，含四个项目：
-- `anhei4-map.sln`（解决方案）
-- `src/Anhei4Map.App/`（WPF 应用程序，.NET 8）
-- `src/Anhei4Map.Core/`（类库，.NET 8）
-- `src/Anhei4Map.Infrastructure/`（类库，.NET 8）
-- `tests/Anhei4Map.Tests/`（xUnit 测试项目，.NET 8）
-
-建立最小项目引用链：
-- Anhei4Map.App → Anhei4Map.Core
-- Anhei4Map.App → Anhei4Map.Infrastructure
-- Anhei4Map.Tests → Anhei4Map.Core
-- Anhei4Map.Tests → Anhei4Map.Infrastructure
-
-验证 `dotnet restore`、`dotnet build -c Release`、`dotnet test -c Release --no-build` 全部成功。
+在 `Anhei4Map.Core` 中定义 `AppSettings` record 及其关联类型，包含合理默认值和输入校验逻辑。全部行为通过 xUnit 测试验证。
 
 ## 允许修改
-- Create: `anhei4-map.sln`
-- Create: `src/Anhei4Map.App/Anhei4Map.App.csproj`
-- Create: `src/Anhei4Map.App/MainWindow.xaml`
-- Create: `src/Anhei4Map.App/MainWindow.xaml.cs`
-- Create: `src/Anhei4Map.App/App.xaml`
-- Create: `src/Anhei4Map.App/App.xaml.cs`
-- Create: `src/Anhei4Map.App/AssemblyInfo.cs`
-- Create: `src/Anhei4Map.Core/Anhei4Map.Core.csproj`
-- Create: `src/Anhei4Map.Core/Class1.cs`（生成后必须删除）
-- Create: `src/Anhei4Map.Infrastructure/Anhei4Map.Infrastructure.csproj`
-- Create: `src/Anhei4Map.Infrastructure/Class1.cs`（生成后必须删除）
-- Create: `tests/Anhei4Map.Tests/Anhei4Map.Tests.csproj`
-- Create: `tests/Anhei4Map.Tests/Usings.cs`
-- Create: `tests/Anhei4Map.Tests/UnitTest1.cs`（生成后必须删除）
+- Create: `src/Anhei4Map.Core/Models/AppSettings.cs`
+- Create: `tests/Anhei4Map.Tests/AppSettingsTests.cs`
 
 ## 禁止修改
-- 不得修改 `docs/` 下任何文件（含设计文档、计划、状态文件）
-- 不得修改 `CLAUDE.md`、`AGENTS.md`、`.gitignore`、`README.md`
-- 不得添加 NuGet 包（含 WebView2——Stage-02 才引入）
-- 不得在 Core 或 Infrastructure 中引用 WPF/Win32 命名空间
-- 不得实现业务逻辑
+- 不得修改 `docs/` 下任何文件
+- 不得修改 `src/Anhei4Map.App/`
+- 不得修改 `src/Anhei4Map.Infrastructure/`
+- 不得引入 JSON 序列化（System.Text.Json）
+- 不得实现文件读写
+- 不得添加 NuGet 包
+- 不得引用 WPF/Win32/WebView2
 
-## 必须新增或修改的测试
-无。SCAFFOLD 类型任务不强制编造 RED 失败测试。验证方式为 `dotnet build` + `dotnet test` 命令级验证。
+## 必须新增的测试
+
+```csharp
+// tests/Anhei4Map.Tests/AppSettingsTests.cs
+
+[Fact] public void CreateDefaults_HasEightHotkeyBindings() { }
+[Fact] public void CreateDefaults_PlacementIs640x360() { }
+[Fact] public void CreateDefaults_OpacityIs0_9() { }
+[Fact] public void CreateDefaults_ZoomLevelIs1_0() { }
+[Fact] public void CreateDefaults_InitialStateIsLocked() { }
+[Fact] public void Validate_RejectsWidthBelow200() { }
+[Fact] public void Validate_RejectsHeightBelow150() { }
+[Fact] public void Validate_RejectsOpacityBelow0_1() { }
+[Fact] public void Validate_RejectsOpacityAbove1_0() { }
+[Fact] public void Validate_RejectsZoomBelow0_25() { }
+[Fact] public void Validate_RejectsZoomAbove5_0() { }
+[Fact] public void Validate_AcceptsValidSettings() { }
+```
+
+共 12 个测试。每个测试必须验证具体行为。
 
 ## RED 预期
-无。
+编译错误：`AppSettings`、`HotkeyBinding`、`WindowPlacement`、`HotkeyCommand` 类型不存在。
 
 ## GREEN 最小实现
 
+需定义以下类型（全部在 `src/Anhei4Map.Core/Models/AppSettings.cs` 一个文件中）：
+
+- `HotkeyCommand` enum：Unknown, ToggleLock, ToggleHide, ZoomIn, ZoomOut, OpacityUp, OpacityDown, ResetPosition, Refresh
+- `HotkeyBinding` record：Id(int), Modifiers(uint), Key(uint), Command(HotkeyCommand)
+- `WindowPlacement` record：Left(int), Top(int), Width(int), Height(int), Opacity(double)
+- `AppSettings` record：Hotkeys(List<HotkeyBinding>), Placement(WindowPlacement), ZoomLevel(double)
+- `AppSettings.CreateDefaults()`：8 个 Ctrl+Shift 快捷键、640×360 默认窗口、不透明度 0.9、缩放 1.0
+- `AppSettings.Validate()`：Width≥200, Height≥150, Opacity [0.1,1.0], Zoom [0.25,5.0]，返回 bool
+
+## 定向测试命令
 ```powershell
-# Step 1: Create solution
-dotnet new sln -n anhei4-map
-
-# Step 2: Create projects
-dotnet new wpf -n Anhei4Map.App -o src/Anhei4Map.App -f net8.0
-dotnet new classlib -n Anhei4Map.Core -o src/Anhei4Map.Core -f net8.0
-dotnet new classlib -n Anhei4Map.Infrastructure -o src/Anhei4Map.Infrastructure -f net8.0
-dotnet new xunit -n Anhei4Map.Tests -o tests/Anhei4Map.Tests -f net8.0
-
-# Step 3: Add to solution
-dotnet sln add src/Anhei4Map.App/Anhei4Map.App.csproj
-dotnet sln add src/Anhei4Map.Core/Anhei4Map.Core.csproj
-dotnet sln add src/Anhei4Map.Infrastructure/Anhei4Map.Infrastructure.csproj
-dotnet sln add tests/Anhei4Map.Tests/Anhei4Map.Tests.csproj
-
-# Step 4: Add project references (App → Core, App → Infrastructure)
-dotnet add src/Anhei4Map.App/Anhei4Map.App.csproj reference src/Anhei4Map.Core/Anhei4Map.Core.csproj
-dotnet add src/Anhei4Map.App/Anhei4Map.App.csproj reference src/Anhei4Map.Infrastructure/Anhei4Map.Infrastructure.csproj
-
-# Step 5: Add project references (Tests → Core, Tests → Infrastructure)
-dotnet add tests/Anhei4Map.Tests/Anhei4Map.Tests.csproj reference src/Anhei4Map.Core/Anhei4Map.Core.csproj
-dotnet add tests/Anhei4Map.Tests/Anhei4Map.Tests.csproj reference src/Anhei4Map.Infrastructure/Anhei4Map.Infrastructure.csproj
-
-# Step 6: Remove template files
-Remove-Item src/Anhei4Map.Core/Class1.cs
-Remove-Item src/Anhei4Map.Infrastructure/Class1.cs
-Remove-Item tests/Anhei4Map.Tests/UnitTest1.cs
+dotnet test anhei4-map.sln -c Release --no-build --filter "FullyQualifiedName~AppSettingsTests"
 ```
 
-## 验证命令
+## 完整测试命令
 ```powershell
-dotnet restore anhei4-map.sln
-dotnet build anhei4-map.sln -c Release
 dotnet test anhei4-map.sln -c Release --no-build
 ```
 
-期望输出：
-- `dotnet restore`: 无错误
-- `dotnet build -c Release`: "Build succeeded." 0 Error(s)
-- `dotnet test -c Release --no-build`: 无测试运行（或 "Test Run Successful"），0 Failed
-
-## 人工验证
-- [ ] `anhei4-map.sln` 存在
-- [ ] `src/Anhei4Map.App/Anhei4Map.App.csproj` 存在，目标框架 `net8.0`，无 NuGet 引用
-- [ ] `src/Anhei4Map.Core/Anhei4Map.Core.csproj` 存在，目标框架 `net8.0`
-- [ ] `src/Anhei4Map.Infrastructure/Anhei4Map.Infrastructure.csproj` 存在，目标框架 `net8.0`
-- [ ] `tests/Anhei4Map.Tests/Anhei4Map.Tests.csproj` 存在，引用 Core + Infrastructure
-- [ ] 所有模板 Class1.cs / UnitTest1.cs 已删除
-- [ ] `dotnet restore` 零错误
-- [ ] `dotnet build -c Release` 零错误
-- [ ] `dotnet test -c Release --no-build` 零失败
-
 ## 完成标准
-1. 四个项目均存在于解决方案中
-2. 引用关系：App→Core, App→Infrastructure, Tests→Core, Tests→Infrastructure
-3. 零 NuGet 包引用（不含 WebView2）
-4. 无模板残留文件
-5. `dotnet build -c Release` 零错误
-6. `dotnet test -c Release --no-build` 零失败
-7. `git commit` + `git push origin feature/01-foundation`
+1. 12 个测试全部通过
+2. `dotnet build -c Release` 零错误
+3. Core 层不引用 WPF/Win32/JSON
+4. `Validate()` 拒绝所有非法值
+5. `CreateDefaults()` 返回合理默认配置
+6. `WindowPlacement.Left = -1` 表示启动时自动计算
 
 ## Git 提交信息
 ```
-chore: scaffold solution with App, Core, Infrastructure, and xUnit test projects
+feat: add AppSettings with defaults and validation (12 tests)
 ```
 
 ## 完成后报告格式
 ```
-STAGE-01-TASK-01 完成报告
+STAGE-01-TASK-02 完成报告
 - 状态: DONE
-- 创建文件:
-  anhei4-map.sln
-  src/Anhei4Map.App/Anhei4Map.App.csproj
-  src/Anhei4Map.App/MainWindow.xaml
-  src/Anhei4Map.App/MainWindow.xaml.cs
-  src/Anhei4Map.App/App.xaml
-  src/Anhei4Map.App/App.xaml.cs
-  src/Anhei4Map.App/AssemblyInfo.cs
-  src/Anhei4Map.Core/Anhei4Map.Core.csproj
-  src/Anhei4Map.Infrastructure/Anhei4Map.Infrastructure.csproj
-  tests/Anhei4Map.Tests/Anhei4Map.Tests.csproj
-  tests/Anhei4Map.Tests/Usings.cs
-- 删除文件:
-  src/Anhei4Map.Core/Class1.cs
-  src/Anhei4Map.Infrastructure/Class1.cs
-  tests/Anhei4Map.Tests/UnitTest1.cs
-- dotnet restore: [通过/失败]
+- 创建文件: src/Anhei4Map.Core/Models/AppSettings.cs, tests/Anhei4Map.Tests/AppSettingsTests.cs
+- 测试结果: [通过数]/12
 - dotnet build -c Release: [通过/失败]
-- dotnet test -c Release --no-build: [通过/失败]
 - Git commit: [hash]
+- 已知限制: [如有]
 ```

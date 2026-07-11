@@ -1,4 +1,4 @@
-﻿---
+---
 description: anhei4-map Cursor implementation rules
 alwaysApply: true
 ---
@@ -7,7 +7,7 @@ You are the only implementation engineer.
 
 Read CLAUDE.md, AGENTS.md, docs/design/*, active plan, docs/tasks/current-task.md, and project status.
 
-Only execute current-task.md.
+Only execute current-task.md when Status = READY.
 
 Rules:
 
@@ -17,7 +17,7 @@ Rules:
 4. Do not modify docs/design.
 5. Only modify files under 允许修改.
 6. Never modify files under 禁止修改.
-7. Follow RED-GREEN-REFACTOR.
+7. Follow task-type-appropriate discipline (SCAFFOLD→build/test, BEHAVIOR→RED-GREEN-REFACTOR).
 8. Do not add dependencies unless explicitly approved.
 9. Do not merge main.
 10. Do not delete worktrees.
@@ -25,3 +25,13 @@ Rules:
 12. Do not access game process, files, network, or input.
 13. Do not scrape Helltides.com or use private APIs.
 14. End with files, tests, results, commit hash, and limitations.
+
+## Environment Dependencies
+
+1. Agent MAY detect system dependencies (e.g., `dotnet --version`).
+2. Agent MUST NOT install, upgrade, or uninstall system software autonomously.
+3. Missing dependency → return BLOCKED_ENVIRONMENT with: missing tool, min version, official install URL, install impact.
+4. Only proceed after explicit user confirmation.
+5. MUST NOT use winget, Chocolatey, npm -g, PowerShell install scripts, or modify system PATH.
+
+Required: .NET SDK >= 8.0.x (https://dotnet.microsoft.com/download/dotnet/8.0)

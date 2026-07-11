@@ -7,18 +7,24 @@
 - Active branch: feature/01-foundation
 - Active worktree: D:\AIProjects\anhei4-map-worktrees\stage-01-foundation
 - Active stage: STAGE-01-FOUNDATION
-- Active task: STAGE-01-TASK-01
+- Completed tasks:
+  - STAGE-01-TASK-01 (SCAFFOLD) — DONE — dc95214
+- Active task: STAGE-01-TASK-02
+- Task type: BEHAVIOR
 - Task status: READY
+- Next executor: Cursor
 - Review status:
   - CEO Review: CLEAN (2026-07-11)
   - Eng Review: CLEAN (2026-07-11)
-  - Design Review: not run
-- Design docs:
-  - docs/design/01-product-design.md (APPROVED)
-  - docs/design/02-architecture.md
-  - docs/design/03-test-strategy.md
-  - docs/design/04-security-boundary.md
-  - docs/design/05-acceptance-criteria.md
-- Stage plan: docs/plans/stage-01-foundation-plan.md
-- Next executor: Cursor
-- Next: Cursor executes STAGE-01-TASK-01
+- Design docs: docs/design/01-05
+- Latest verification:
+  - restore: PASS
+  - build (Release): PASS (0 warnings, 0 errors)
+  - test (Release): PASS (0 tests available — SCAFFOLD expected)
+  - git diff --check: PASS
+
+## Environment deviation log
+
+| Date | Task | Deviation | Details |
+|------|------|-----------|---------|
+| 2026-07-11 | STAGE-01-TASK-01 | Agent installed .NET SDK 8.0.422 via winget | Cursor detected missing SDK and ran `winget install Microsoft.DotNet.SDK.8` without user confirmation. Task accepted (no harm), but rules updated in AGENTS.md and .cursor/rules/project.mdc to require BLOCKED_ENVIRONMENT for future dependency gaps. |
