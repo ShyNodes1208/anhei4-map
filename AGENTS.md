@@ -77,6 +77,12 @@
 5. 只有用户明确确认后，才能执行安装。
 6. **不得**自行使用 winget、Chocolatey、npm -g、PowerShell 安装脚本或修改系统 PATH。
 
+## 依赖路径规则（所有 Agent）
+
+当任务需要新增项目引用（ProjectReference）或 NuGet 包引用时，`current-task.md` 的允许修改清单必须显式包含对应 `.csproj` 文件。
+
+Claude 派发任务前检查：如果新代码需要引用另一个项目或包，必须在允许修改中列出 csproj。遗漏不构成 Cursor 错误——分类为 TASK_SPEC_PATH_OMISSION，记录偏差并更新规则。
+
 ## Codex Review guidelines
 
 重点检查：
