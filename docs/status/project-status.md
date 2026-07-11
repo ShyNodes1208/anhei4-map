@@ -1,12 +1,22 @@
-﻿# Project status
+# Project status
 
 - Repository: https://github.com/ShyNodes1208/anhei4-map.git
 - Main branch: main
-- Current phase: BOOTSTRAP
-- Design baseline: not created
-- Active branch: main
-- Active worktree: D:\AIProjects\anhei4-map
-- Active stage: none
+- Current phase: DESIGN
+- Design baseline: design-baseline-v1 (v1.0.0)
+- Active branch: design-baseline-v1
+- Active worktree: D:\AIProjects\anhei4-map\.worktrees\design-baseline-v1
+- Active stage: stage-1 (architecture freeze)
 - Active task: none
-- Review status: not available
-- Next: install and verify Gstack and Superpowers
+- Review status:
+  - CEO Review: CLEAN (2026-07-11)
+  - Eng Review: CLEAN (2026-07-11)
+  - Design Review: not run
+  - Adversarial Review: not run
+- Design docs:
+  - docs/design/01-product-design.md (APPROVED)
+  - docs/design/02-architecture.md (DRAFT)
+  - docs/design/03-test-strategy.md (DRAFT)
+  - docs/design/04-security-boundary.md (DRAFT)
+  - docs/design/05-acceptance-criteria.md (DRAFT)
+- Next: writing-plans → Cursor TDD → verification-before-completion → finishing-a-development-branch
