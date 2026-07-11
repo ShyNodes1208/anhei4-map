@@ -45,6 +45,62 @@
 
 开发：using-git-worktrees → writing-plans → current-task → Cursor TDD → Claude 检查 → Codex 审核 → Claude 裁决 → Cursor 修复 → Codex 复审 → verification-before-completion → finishing-a-development-branch。
 
+## 任务状态
+
+`docs/tasks/current-task.md` 必须包含以下状态之一：
+
+| 状态 | 含义 | Cursor 行为 |
+|------|------|------------|
+| UNASSIGNED | 尚未分配 | 停止，等待 Claude 派发 |
+| READY | 已派发，可执行 | 允许执行 |
+| IN_PROGRESS | Cursor 正在执行 | 不重复执行 |
+| BLOCKED | 被前置条件阻塞 | 停止，等待 Claude 解除 |
+| DONE | 已完成并验收 | 停止，等待下一任务 |
+
+只有 **READY** 状态允许 Cursor 执行。任何其他状态 Cursor 必须停止。
+
+## 任务类型
+
+| 类型 | 强制 RED 测试 | 验证方式 |
+|------|--------------|---------|
+| SCAFFOLD | 否 | `dotnet restore` + `dotnet build` + `dotnet test` |
+| BEHAVIOR | 是 | 先写失败测试，RED → GREEN → REFACTOR |
+| FIX | 是 | 先写回归测试复现缺陷 |
+| DOCS | 否 | 文档完整性检查、链接有效性 |
+| CONFIG | 视情况 | 可自动测试则测试，否则人工验证 |
+| RELEASE | 否 | 发布 + smoke test |
+
+SCAFFOLD 任务不得编造没有业务价值的假测试来满足 TDD 形式。
+
+## Cursor 零产出分类
+
+当 Cursor 返回零代码产出时，Claude 必须先分类再行动：
+
+| 分类 | 条件 | Claude 行动 |
+|------|------|------------|
+| BLOCKED_NO_TASK | 无正式任务派发，或 current-task.md 为 UNASSIGNED | Claude 补齐任务，重新派发；不是返工 |
+| TASK_NOT_EXECUTED | 有 READY 任务但 Cursor 未执行 | 重新派发同一任务；不是 FIX |
+| TASK_FAILED | 有代码产出但验收不通过 | 生成 `<task>-FIX1` 返工任务 |
+
+**FIX1 只能用于：** 存在有效实现但代码、测试或验收存在明确问题的场景。不得用于无代码产出或任务未派发的情况。
+
+## Agent 交接门禁
+
+Claude 派发 Cursor 前必须输出 `HANDOFF_READY`，包含：
+
+```
+Branch:
+Worktree:
+Plan:
+Task:
+Task Type:
+Task Status:
+Allowed Paths:
+Verification Commands:
+```
+
+Cursor 在 current-task.md 中找不到以上任一字段时必须停止，等待 Claude 补全。
+
 ## Git 规则
 
 - main 只保存已验收阶段
