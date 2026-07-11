@@ -1,10 +1,10 @@
 # 当前任务
 
 ## 任务编号
-STAGE-01-TASK-04
+STAGE-01-TASK-05
 
 ## 任务名称
-损坏设置文件恢复与原子保存
+窗口边界规范化纯逻辑
 
 ## 任务类型
 BEHAVIOR
@@ -16,76 +16,74 @@ READY
 STAGE-01-FOUNDATION
 
 ## 前置条件
-STAGE-01-TASK-03 完成——`JsonSettingsStore` 已实现基础 JSON 保存和读取（非原子），18 个测试通过。
+STAGE-01-TASK-04 完成——`JsonSettingsStore` 支持原子保存和损坏恢复，26 个测试通过。`AppSettings` 中 `WindowPlacement` 和默认值（640×360）已定义。
 
 ## 任务目标
-增强 `JsonSettingsStore`：原子写入（tmp + rename）、损坏 JSON 检测与 `.bak` 备份、损坏时回退默认值。保持向后兼容 Task 3 的 API。
-
-## 架构约束
-- Infrastructure 引用 Core（不引用 App）
-- 不引入第三方包
-- 不实现 WPF/WebView2/快捷键/鼠标穿透
-- 测试使用临时目录
+实现与 WPF、Win32、真实显示器 API 解耦的窗口边界规范化纯逻辑。输入为保存的 `WindowPlacement` 和可用显示器工作区列表，输出为修正后的 `WindowPlacement`。
 
 ## 允许修改
-- Modify: `src/Anhei4Map.Infrastructure/Services/JsonSettingsStore.cs`
-- Modify: `tests/Anhei4Map.Tests/JsonSettingsStoreTests.cs`
-- Modify: `src/Anhei4Map.Infrastructure/Anhei4Map.Infrastructure.csproj`（仅当需要新引用时）
+- Create: `src/Anhei4Map.Core/Services/WindowBoundsNormalizer.cs`
+- Create: `tests/Anhei4Map.Tests/WindowBoundsNormalizerTests.cs`
 
 ## 禁止修改
-- 不得修改 `src/Anhei4Map.Core/`
 - 不得修改 `src/Anhei4Map.App/`
-- 不得修改 `docs/`
-- 不得添加 NuGet 包
+- 不得修改 `src/Anhei4Map.Infrastructure/`
+- 不得修改 `docs/design/`
+- 不得引用 WPF、Win32、`System.Windows.Forms`、`System.Drawing`
+- 不得修改 `JsonSettingsStore` 或 `AppSettings`
 
-## 必须新增的测试
+## 设计常量（以架构文档为准）
+
+| 常量 | 值 | 来源 |
+|------|----|------|
+| 默认宽度 | 640 | `AppSettings.CreateDefaults()` |
+| 默认高度 | 360 | `AppSettings.CreateDefaults()` |
+| 最小宽度 | 200 | `AppSettings.Validate()` |
+| 最小高度 | 150 | `AppSettings.Validate()` |
+| 可见阈值 | 20% | `02-architecture.md` |
+| 边距 | 16px | `02-architecture.md` |
+
+## RED 测试清单
 
 ```csharp
-// 追加到 tests/Anhei4Map.Tests/JsonSettingsStoreTests.cs
+// tests/Anhei4Map.Tests/WindowBoundsNormalizerTests.cs
 
-[Fact] public async Task Load_CorruptedJson_ReturnsDefaults() { }
-[Fact] public async Task Load_CorruptedJson_RenamesToBak() { }
-[Fact] public async Task Load_CorruptedJson_BakContentsMatchOriginal() { }
-[Fact] public async Task Load_ExistingBak_NotOverwrittenByNewCorruption() { }
-[Fact] public async Task SaveAtomic_Success_FormalFileCorrect() { }
-[Fact] public async Task SaveAtomic_Success_TmpCleaned() { }
-[Fact] public async Task Load_ValidJson_DoesNotCreateBak() { }
-[Fact] public async Task Load_FileNotFound_ReturnsDefaults() { }
+[Fact] public void ValidBounds_Unchanged() { }
+[Fact] public void FullyOffscreenRight_Resets() { }
+[Fact] public void FullyOffscreenLeft_Resets() { }
+[Fact] public void FullyOffscreenAbove_Resets() { }
+[Fact] public void FullyOffscreenBelow_Resets() { }
+[Fact] public void PartiallyVisibleAboveThreshold_Unchanged() { }
+[Fact] public void BelowVisibilityThreshold_Resets() { }
+[Fact] public void ValidOnNegativeOriginMonitor_Unchanged() { }
+[Fact] public void WidthBelowMin_ClampedToDefault() { }
+[Fact] public void HeightBelowMin_ClampedToDefault() { }
+[Fact] public void WidthExceedsWorkArea_Clamped() { }
+[Fact] public void HeightExceedsWorkArea_Clamped() { }
+[Fact] public void EmptyWorkAreaList_Fallback() { }
+[Fact] public void ResetPositionsIncludeEdgePadding() { }
 ```
 
-共 8 个新测试。已有 6 个测试应保持通过。
+共 14 个测试。
 
-## RED 预期
-新增测试编译失败——`SaveAtomic`、损坏恢复方法不存在，或 `LoadAsync` 行为未更新。
+## 有效 RED 失败标准
+`dotnet test --filter "FullyQualifiedName~WindowBoundsNormalizerTests"` 编译失败——`WindowBoundsNormalizer` 类型不存在。
 
 ## GREEN 最小实现
 
-**原子保存 (`SaveAsync`)：**
-```
-1. 序列化为 JSON
-2. WriteAllTextAsync to settings.json.tmp
-3. File.Move(tmp, settings.json, overwrite: true)
-4. File.Move is atomic on NTFS
-```
+`WindowBoundsNormalizer.Normalize(WindowPlacement saved, WorkArea[] workAreas)` 返回 `WindowPlacement`：
 
-**损坏恢复 (`LoadAsync`)：**
-```
-1. 文件不存在 → CreateDefaults()
-2. 读取 JSON → JsonSerializer.Deserialize
-3. JsonException 或 null → File.Move(json, .bak, overwrite: false)
-   - 如果 .bak 已存在 → 追加时间戳后缀 (settings.json.bak.20260711T012345)
-4. 返回 CreateDefaults()
-```
+1. Clamp Width/Height 到 [min, max(workArea size)]
+2. 遍历 workAreas，检查交集面积 >= 20% 窗口面积
+3. 如无足够交集 → 重置到 `workAreas[0]` 右上角（Right - 640 - 16, Top + 16）
+4. 空 workAreas → (0, 16, 640, 360)
+5. 纯静态方法，无副作用
 
-**注意：**
-- 使用 `File.Move(json, bak)` 而非先删后移
-- `.bak` 已存在时不覆盖，使用时间戳后缀
-- 原子写入后清理 `.tmp`（正常路径不残留）
-- `LoadAsync` 启动时清理任何残留 `.tmp`
+`WorkArea` record: `(int Left, int Top, int Width, int Height)` — 定义在 `WindowBoundsNormalizer.cs` 同文件中。
 
 ## 定向测试命令
 ```powershell
-dotnet test anhei4-map.sln -c Release --filter "FullyQualifiedName~JsonSettingsStoreTests"
+dotnet test anhei4-map.sln -c Release --filter "FullyQualifiedName~WindowBoundsNormalizerTests"
 ```
 
 ## 完整测试命令
@@ -94,27 +92,23 @@ dotnet test anhei4-map.sln -c Release --no-build
 ```
 
 ## 完成标准
-1. 8 个新测试 + 6 个已有测试 = 14 个 `JsonSettingsStoreTests` 全部通过
-2. 加 Task 2 的 12 个测试 = 26 个测试全部通过
+1. 14 个定向测试全部通过
+2. 加已有 26 个 = 40 个测试全部通过
 3. `dotnet build -c Release` 零错误
-4. 原子写入：成功后无 `.tmp` 残留
-5. 损坏恢复：`.bak` 创建，内容与损坏源一致
-6. 已有 `.bak` 时不覆盖（时间戳备选名）
-7. 测试不写真实 `%LocalAppData%`
+4. Core 层零 WPF/Win32 引用
 
 ## Git 提交信息
 ```
-feat: add atomic save and corrupted settings recovery (8 tests)
+feat: add window bounds normalization (14 tests)
 ```
 
 ## 完成后报告格式
 ```
-STAGE-01-TASK-04 完成报告
+STAGE-01-TASK-05 完成报告
 - 状态: DONE
-- 修改文件: src/Anhei4Map.Infrastructure/Services/JsonSettingsStore.cs, tests/Anhei4Map.Tests/JsonSettingsStoreTests.cs
+- 创建文件: src/Anhei4Map.Core/Services/WindowBoundsNormalizer.cs, tests/Anhei4Map.Tests/WindowBoundsNormalizerTests.cs
 - 定向测试: [通过数]/14
-- 完整测试: [通过数]/26
+- 完整测试: [通过数]/40
 - dotnet build -c Release: [通过/失败]
 - Git commit: [hash]
-- 已知限制: [如有]
 ```

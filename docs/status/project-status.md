@@ -11,40 +11,25 @@
   - STAGE-01-TASK-01 (SCAFFOLD) — DONE — dc95214
   - STAGE-01-TASK-02 (BEHAVIOR) — DONE — 2de1cf1
   - STAGE-01-TASK-03 (BEHAVIOR) — DONE — a7e4125
-- Active task: STAGE-01-TASK-04
+  - STAGE-01-TASK-04 (BEHAVIOR) — DONE — 246f034
+- Active task: STAGE-01-TASK-05
 - Task type: BEHAVIOR
 - Task status: READY
 - Next executor: Cursor
-- Review status:
-  - CEO Review: CLEAN (2026-07-11)
-  - Eng Review: CLEAN (2026-07-11)
+- Review status: CEO + Eng CLEARED
 - Latest verification:
   - restore: PASS
   - build (Release): PASS (0 warnings, 0 errors)
-  - test (Release): 18/18 PASS
+  - test (Release): 26/26 PASS
   - git diff --check: PASS
 
-## Environment deviation log
+## Deferred items
 
-| Date | Task | Deviation | Details |
-|------|------|-----------|---------|
-| 2026-07-11 | STAGE-01-TASK-01 | Agent installed .NET SDK via winget | Rules updated |
+| ID | Origin | Description | Assignee |
+|----|--------|-------------|----------|
+| TASK-04B | TASK-04 | Call `AppSettings.Validate()` after `LoadAsync()` | Future stage or backlog |
 
-## RED process log
+## Accepted limitations
 
-| Date | Task | Method | Note |
-|------|------|--------|------|
-| 2026-07-11 | TASK-02 | `dotnet build` | Acceptable (missing types) |
-| 2026-07-11 | TASK-03 | `dotnet build` | Acceptable (missing types) |
-
-## TASK_SPEC_PATH_OMISSION log
-
-| Date | Task | Missing Path | Root Cause | Fix |
-|------|------|-------------|------------|-----|
-| 2026-07-12 | TASK-03 | `src/Anhei4Map.Infrastructure/Anhei4Map.Infrastructure.csproj` | Cursor needed to add Core ProjectReference but csproj was not in allowed paths | AGENTS.md updated with dependency path pre-check rule |
-
-## Task 4 risk notes
-
-- `File.Move` 在 NTFS 上原子，但跨卷不是原子（本地 `%LocalAppData%` 不跨卷，安全）
-- `.bak` 已存在时使用时间戳后缀避免覆盖
-- 不引入文件系统抽象——通过构造函数注入目录路径已足够可测试
+- Backup timestamp granularity: 1 second (single-user desktop, acceptable)
+- Cross-volume `File.Move` non-atomic: not applicable (`%LocalAppData%` on system volume)
