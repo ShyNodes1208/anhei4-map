@@ -64,6 +64,12 @@ public class JsonSettingsStore
                 return AppSettings.CreateDefaults();
             }
 
+            if (!settings.Validate())
+            {
+                BackupCorruptedFile();
+                return AppSettings.CreateDefaults();
+            }
+
             return settings;
         }
         catch (JsonException)

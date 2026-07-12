@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Anhei4Map.Core.Models;
 using Anhei4Map.Infrastructure.Services;
 
@@ -352,6 +353,101 @@ public class JsonSettingsStoreTests
             Assert.Equal(expected.Placement.Height, loaded.Placement.Height);
             Assert.Equal(expected.ZoomLevel, loaded.ZoomLevel);
             Assert.Equal(expected.InitialState, loaded.InitialState);
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Load_WidthZero_ReturnsDefaults()
+    {
+        var directory = CreateTempDirectory();
+
+        try
+        {
+            var defaults = AppSettings.CreateDefaults();
+            var invalidJson = JsonSerializer.Serialize(
+                defaults with { Placement = defaults.Placement with { Width = 0 } });
+            await File.WriteAllTextAsync(Path.Combine(directory, "settings.json"), invalidJson);
+
+            var store = new JsonSettingsStore(directory);
+            var loaded = await store.LoadAsync();
+
+            Assert.Equal(640, loaded.Placement.Width);
+            Assert.True(File.Exists(Path.Combine(directory, "settings.json.bak")));
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Load_OpacityAboveOne_ReturnsDefaults()
+    {
+        var directory = CreateTempDirectory();
+
+        try
+        {
+            var defaults = AppSettings.CreateDefaults();
+            var invalidJson = JsonSerializer.Serialize(
+                defaults with { Placement = defaults.Placement with { Opacity = 1.5 } });
+            await File.WriteAllTextAsync(Path.Combine(directory, "settings.json"), invalidJson);
+
+            var store = new JsonSettingsStore(directory);
+            var loaded = await store.LoadAsync();
+
+            Assert.Equal(0.9, loaded.Placement.Opacity);
+            Assert.True(File.Exists(Path.Combine(directory, "settings.json.bak")));
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Load_ZoomLevelOutOfRange_ReturnsDefaults()
+    {
+        var directory = CreateTempDirectory();
+
+        try
+        {
+            var defaults = AppSettings.CreateDefaults();
+            var invalidJson = JsonSerializer.Serialize(defaults with { ZoomLevel = 10.0 });
+            await File.WriteAllTextAsync(Path.Combine(directory, "settings.json"), invalidJson);
+
+            var store = new JsonSettingsStore(directory);
+            var loaded = await store.LoadAsync();
+
+            Assert.Equal(1.0, loaded.ZoomLevel);
+            Assert.True(File.Exists(Path.Combine(directory, "settings.json.bak")));
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Load_HeightBelowMin_ReturnsDefaults()
+    {
+        var directory = CreateTempDirectory();
+
+        try
+        {
+            var defaults = AppSettings.CreateDefaults();
+            var invalidJson = JsonSerializer.Serialize(
+                defaults with { Placement = defaults.Placement with { Height = 100 } });
+            await File.WriteAllTextAsync(Path.Combine(directory, "settings.json"), invalidJson);
+
+            var store = new JsonSettingsStore(directory);
+            var loaded = await store.LoadAsync();
+
+            Assert.Equal(360, loaded.Placement.Height);
+            Assert.True(File.Exists(Path.Combine(directory, "settings.json.bak")));
         }
         finally
         {
