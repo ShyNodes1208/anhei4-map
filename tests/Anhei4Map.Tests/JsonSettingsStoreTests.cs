@@ -46,7 +46,7 @@ public class JsonSettingsStoreTests
         var timestamp = remainder[..separator];
         var suffix = remainder[(separator + 1)..];
         return timestamp.EndsWith("Z", StringComparison.Ordinal)
-            && suffix.Length == 8
+            && suffix.Length == 32
             && suffix.All(static c => Uri.IsHexDigit(c));
     }
 
@@ -500,6 +500,31 @@ public class JsonSettingsStoreTests
             Assert.True(File.Exists(BaseBakPath(directory)));
             Assert.False(File.Exists(SettingsPath(directory)));
             Assert.Equal(corruptedJson, await File.ReadAllTextAsync(BaseBakPath(directory)));
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Backup_UsesFullGuidSuffix()
+    {
+        var directory = CreateTempDirectory();
+
+        try
+        {
+            await File.WriteAllTextAsync(BaseBakPath(directory), "existing");
+            await File.WriteAllTextAsync(SettingsPath(directory), "{ corrupt }");
+            var store = new JsonSettingsStore(directory);
+            await store.LoadAsync();
+
+            var additional = BackupFiles(directory)
+                .Where(p => !string.Equals(p, BaseBakPath(directory), StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            Assert.Single(additional);
+            var fileName = Path.GetFileName(additional[0]);
+            Assert.True(IsUniqueTimestampedBackup(fileName));
         }
         finally
         {

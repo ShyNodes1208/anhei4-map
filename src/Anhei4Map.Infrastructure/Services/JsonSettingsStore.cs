@@ -102,7 +102,7 @@ public class JsonSettingsStore
 
         var directory = Path.GetDirectoryName(_filePath)!;
         var timestamp = DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmssfff'Z'");
-        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var suffix = Guid.NewGuid().ToString("N");
         var uniquePath = Path.Combine(directory, $"settings.json.bak.{timestamp}.{suffix}");
         File.Move(_filePath, uniquePath);
     }
