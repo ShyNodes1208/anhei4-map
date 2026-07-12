@@ -8,12 +8,19 @@ public sealed class FileLogger : IAppLogger
 {
     private readonly string _logFilePath;
     private readonly TimeProvider _timeProvider;
+    private readonly long _maxFileSizeBytes;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
-    public FileLogger(string directory, TimeProvider? timeProvider = null)
+    public FileLogger(string directory, TimeProvider? timeProvider = null, long maxFileSizeBytes = 10 * 1024 * 1024)
     {
+        if (maxFileSizeBytes <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxFileSizeBytes));
+        }
+
         _logFilePath = Path.Combine(directory, "app.log");
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _maxFileSizeBytes = maxFileSizeBytes;
     }
 
     public void Log(LogLevel level, string source, string message, Exception? ex = null)
@@ -29,12 +36,46 @@ public sealed class FileLogger : IAppLogger
                 Directory.CreateDirectory(directory);
             }
 
+            RotateIfNeeded(entry);
+
             File.AppendAllText(_logFilePath, entry + Environment.NewLine, Encoding.UTF8);
         }
         finally
         {
             _writeLock.Release();
         }
+    }
+
+    private void RotateIfNeeded(string entry)
+    {
+        var entryLine = entry + Environment.NewLine;
+        var entryBytes = Encoding.UTF8.GetByteCount(entryLine);
+
+        long currentSize = 0;
+        if (File.Exists(_logFilePath))
+        {
+            currentSize = new FileInfo(_logFilePath).Length;
+        }
+
+        if (currentSize == 0 || currentSize + entryBytes <= _maxFileSizeBytes)
+        {
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(_logFilePath)!;
+        var thirdPath = Path.Combine(directory, "app.2.log");
+        if (File.Exists(thirdPath))
+        {
+            File.Delete(thirdPath);
+        }
+
+        var secondPath = Path.Combine(directory, "app.1.log");
+        if (File.Exists(secondPath))
+        {
+            File.Move(secondPath, thirdPath);
+        }
+
+        File.Move(_logFilePath, secondPath);
     }
 
     private string FormatEntry(LogLevel level, string source, string message, Exception? ex)
