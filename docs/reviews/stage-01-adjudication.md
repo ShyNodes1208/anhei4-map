@@ -52,6 +52,14 @@
 
 **修复要求:** 在允许 host 前检查 `string.IsNullOrEmpty(parsed.UserInfo)`。补充 `https://user:pass@helltides.com/` 和 `https://user:pass@www.helltides.com/` 两种 URL 均被拒绝的测试。
 
+**修复记录:**
+- Commit: bc8dfec523faa0bd16a9c877d4669760dd4c87a3
+- 日期: 2026-07-12
+- 修改: DomainPolicy.cs (+5行 UserInfo 检查), DomainPolicyTests.cs (+3测试)
+- 测试: 89/89 PASS (新增3: UserInfo on root domain, www domain, legit path)
+- Build: Release 0 errors 0 warnings
+- Claude 验收: APPROVED — 变更最小精确、测试覆盖 root/www 两种域名 + 纯用户名场景
+
 ---
 
 ### S01-003: FileLogger 缺少轮转 — CONFIRMED
