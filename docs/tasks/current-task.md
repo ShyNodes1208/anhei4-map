@@ -7,10 +7,13 @@ READY
 FIX
 
 ## 修复编号
-STAGE-01-REVIEW-FIX-05
+STAGE-01-REVIEW-FIX-05-FIX1
 
 ## 对应 Codex 发现
 S01-005 (LOW)
+
+## 父任务
+STAGE-01-REVIEW-FIX-05 (96f01e6 — 已实现但 GUID 后缀不足)
 
 ## 阶段
 STAGE-01-FOUNDATION (修复轮)
@@ -23,17 +26,11 @@ D:\AIProjects\anhei4-map-worktrees\stage-01-foundation
 
 ---
 
-## 问题证据
+## 返工原因
 
-[JsonSettingsStore.cs:97-100](src/Anhei4Map.Infrastructure/Services/JsonSettingsStore.cs#L97-L100):
+父任务实现 (96f01e6) 使用 `Guid.NewGuid().ToString("N")[..8]`，仅 8 个十六进制字符作为唯一后缀（~32 位随机空间）。无碰撞重试循环。不满足"杜绝备份名称碰撞"的规格要求。
 
-```csharp
-var timestamp = DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmss");
-var timestampedBakPath = Path.Combine(directory, $"settings.json.bak.{timestamp}");
-File.Move(_filePath, timestampedBakPath);
-```
-
-`BackupCorruptedFile()` 在 `.bak` 已存在时使用秒级时间戳。同一秒内第二次损坏 → 相同文件名 → `File.Move` 抛 `IOException`（目标已存在） → 损坏文件无法备份。
+**裁决:** 不能用"概率很低"替代确定性唯一性要求。
 
 ---
 
@@ -51,130 +48,85 @@ File.Move(_filePath, timestampedBakPath);
 - `docs/plans/**`
 - `*.csproj`
 - `*.sln`
+- 不改变第一份备份命名规则（settings.json.bak 仍正确）
 - 不删除旧备份
-- 不修改设置校验语义
-- 不新增第三方依赖
+- 不修改 load/save/validate 逻辑
 
 ---
 
-## 备份命名规则
+## RED 阶段 — 调整测试
 
-### 第一份备份
+### 1. 修改 `IsUniqueTimestampedBackup` 辅助方法
 
-始终使用: `settings.json.bak`
+将 `<test-file>:49` 的 `suffix.Length == 8` 改为 `suffix.Length == 32`：
 
-### 后续备份
+```csharp
+private static bool IsUniqueTimestampedBackup(string fileName)
+{
+    const string prefix = "settings.json.bak.";
+    if (!fileName.StartsWith(prefix, StringComparison.Ordinal))
+        return false;
 
-当 `settings.json.bak` 已存在时，使用带唯一后缀的名称:
+    var remainder = fileName[prefix.Length..];
+    var separator = remainder.LastIndexOf('.');
+    if (separator <= 0 || separator >= remainder.Length - 1)
+        return false;
 
+    var timestamp = remainder[..separator];
+    var suffix = remainder[(separator + 1)..];
+    return timestamp.EndsWith("Z", StringComparison.Ordinal)
+        && suffix.Length == 32;  // ← 8 → 32
+}
 ```
-settings.json.bak.<UTC毫秒时间戳>.<GUID后缀>
-```
 
-- 时间戳格式: `yyyyMMddTHHmmssfffZ`（毫秒精度，UTC，Z 后缀）
-- GUID 后缀: `Guid.NewGuid().ToString("N")[..8]`（取 GUID 前 8 个十六进制字符）
+### 2. 新增测试: `Backup_UsesFullGuidSuffix`
 
-### 不覆盖规则
-
-- 不得以 `overwrite: true` 覆盖已有备份
-- 每次 `BackupCorruptedFile()` 必须创建**独立的新文件**
-- 如果目标路径恰好已存在（极端碰撞），`File.Move` 的 `IOException` 自然传播
-
-### 适用范围
-
-- JSON 语法损坏 (`JsonException`) → 使用相同唯一备份策略
-- 语义校验失败 (`Validate() == false`) → 使用相同唯一备份策略
-- 两种路径都通过 `BackupCorruptedFile()` 处理，无需区分
-
-### 旧备份保留
-
-- 不删除任何旧备份文件
-- 不限制备份总数上限（LOW severity，不引入复杂性换有限磁盘节省）
-
-### 异常传播
-
-- `File.Move` 失败 → 异常向 `LoadAsync()` 调用方传播
-- 不在 `BackupCorruptedFile()` 内吞异常
-
----
-
-## RED 阶段 — 先写失败测试
-
-### 测试 1: `Backup_UsesBaseBakNameForFirstCorruption`
-
-首次损坏 → 创建 `settings.json.bak`，内容匹配原始损坏 JSON。
-
-### 测试 2: `Backup_ExistingBaseBak_CreatesUniqueAdditionalBackup`
-
-预创 `settings.json.bak`，写入新的损坏 `settings.json` → 新备份使用带时间戳和 GUID 的文件名，旧 `.bak` 未被覆盖。
-
-### 测试 3: `Backup_MultipleBackups_AreAllUnique`
-
-快速连续 3 次损坏 → 每次创建独立备份文件，文件名全部不同，内容分别保留。
+验证后缀为 32 位十六进制：
 
 ```csharp
 [Fact]
-public async Task Backup_MultipleBackups_AreAllUnique()
+public async Task Backup_UsesFullGuidSuffix()
 {
     var directory = CreateTempDirectory();
     try
     {
+        await File.WriteAllTextAsync(BaseBakPath(directory), "existing");
+        await File.WriteAllTextAsync(SettingsPath(directory), "{ corrupt }");
         var store = new JsonSettingsStore(directory);
-
-        // First: writes corrupted JSON to settings.json, load → backup
-        await File.WriteAllTextAsync(Path.Combine(directory, "settings.json"), "{ corrupt A }");
         await store.LoadAsync();
 
-        // Second: new corrupted content
-        await File.WriteAllTextAsync(Path.Combine(directory, "settings.json"), "{ corrupt B }");
-        await store.LoadAsync();
-
-        // Third: new corrupted content
-        await File.WriteAllTextAsync(Path.Combine(directory, "settings.json"), "{ corrupt C }");
-        await store.LoadAsync();
-
-        var bakFiles = Directory.GetFiles(directory, "settings.json.bak*");
-        Assert.True(bakFiles.Length >= 3);
-        // All filenames are distinct
-        Assert.Equal(bakFiles.Distinct().Count(), bakFiles.Length);
+        var additional = BackupFiles(directory)
+            .Where(p => !string.Equals(p, BaseBakPath(directory), StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        Assert.Single(additional);
+        var fileName = Path.GetFileName(additional[0]);
+        Assert.True(IsUniqueTimestampedBackup(fileName));
     }
     finally { CleanupTempDirectory(directory); }
 }
 ```
 
-### 测试 4: `Backup_ExistingTimestampLikeBak_IsNotOverwritten`
-
-预创 `settings.json.bak.20260712T120000000Z.abc12345` → 新损坏加载不覆盖该文件。
-
-### 测试 5: `Backup_EveryBackupPreservesOriginalBytes`
-
-每轮写入不同损坏内容 → 验证每个备份文件分别保留当次原始内容。
-
-### 测试 6: `Backup_SemanticInvalidSettings_UsesUniqueBackupPolicy`
-
-格式合法但 Validate()=false（如 Width=0）→ 也使用唯一备份文件名。
-
-### 测试 7: `Backup_SyntaxCorrupted_UsesUniqueBackupPolicy`
-
-JSON 语法错误 → 也使用唯一备份文件名。
-
-### 测试 8: `Backup_ExistingManyBackups_DoesNotDeleteOldBackups`
-
-预创 5 个旧 `settings.json.bak.*` 文件 → 新损坏加载后旧备份全部保留。
-
 ### RED 预期
 
-```
-dotnet test --filter "FullyQualifiedName~JsonSettingsStoreTests" -c Release
-```
+`dotnet test --filter "FullyQualifiedName~JsonSettingsStoreTests" -c Release`
 
-预期新增测试 FAIL — 当前秒级时间戳在同一秒内多次损坏时产生相同文件名导致冲突。
+预期 `Backup_UsesFullGuidSuffix` FAIL — 当前后缀仅 8 字符，`IsUniqueTimestampedBackup` 修改后（要求 32 字符）或新增正则测试会失败。
 
 ---
 
-## GREEN 阶段 — 最小实现
+## GREEN 阶段 — 最小修复
 
-修改 `BackupCorruptedFile()` 方法：
+**只修改一行：** [JsonSettingsStore.cs:105](src/Anhei4Map.Infrastructure/Services/JsonSettingsStore.cs#L105)
+
+```csharp
+// 改前:
+var suffix = Guid.NewGuid().ToString("N")[..8];
+
+// 改后:
+var suffix = Guid.NewGuid().ToString("N");
+```
+
+**完整方法应变为：**
 
 ```csharp
 private void BackupCorruptedFile()
@@ -190,13 +142,13 @@ private void BackupCorruptedFile()
 
     var directory = Path.GetDirectoryName(_filePath)!;
     var timestamp = DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmssfff'Z'");
-    var suffix = Guid.NewGuid().ToString("N")[..8];
+    var suffix = Guid.NewGuid().ToString("N");
     var uniquePath = Path.Combine(directory, $"settings.json.bak.{timestamp}.{suffix}");
     File.Move(_filePath, uniquePath);
 }
 ```
 
-**变更：** 仅修改 `BackupCorruptedFile()` 方法中的时间戳格式和文件名生成逻辑。不改动 `LoadAsync`、`SaveAsync`、`CleanupResidualTmp` 或其他方法。
+不改动其他任何代码。
 
 ---
 
@@ -222,26 +174,28 @@ dotnet build -c Release
 
 ## 完成标准
 
-- [ ] `BackupCorruptedFile()` 修改为毫秒时间戳 + GUID 后缀
-- [ ] 8 个新测试写入 `JsonSettingsStoreTests.cs`
+- [ ] `JsonSettingsStore.cs:105` 改为完整 GUID（移除 `[..8]`）
+- [ ] `IsUniqueTimestampedBackup` 改为要求 `suffix.Length == 32`
+- [ ] `Backup_UsesFullGuidSuffix` 测试新增或现有测试验证通过
 - [ ] `dotnet build -c Release` 0 错误 0 警告
-- [ ] 定向测试 FAIL (RED)
-- [ ] 定向测试 PASS (GREEN: 26/26: 18原有 + 8新增)
-- [ ] 完整测试 `dotnet test -c Release --no-build` 全部通过 (121: 113原有 + 8新增)
+- [ ] 定向测试 PASS (26/26)
+- [ ] 完整测试 PASS (121/121)
 - [ ] `git diff --check` clean
-- [ ] 只修改了 `JsonSettingsStore.cs` 和 `JsonSettingsStoreTests.cs`
+- [ ] 只修改了允许的两个文件
+- [ ] 不处理 FIX-06
 
 ---
 
 ## Git 提交信息
 
 ```
-fix: prevent settings backup name collisions
+fix: strengthen settings backup uniqueness with full GUID suffix
 
-S01-005: BackupCorruptedFile now uses millisecond-precision UTC timestamps
-with a GUID suffix to guarantee unique backup filenames. Previously,
-second-precision timestamps could collide within the same second when
-.bak already existed, causing File.Move to fail with IOException.
+S01-005-FIX1: Replace 8-character GUID truncation with the full
+32-character GUID to guarantee unique backup filenames. A truncated
+8-char suffix provides only ~32 bits of randomness and risks collision
+without retry logic. Also updated IsUniqueTimestampedBackup validator
+to accept 32-char suffixes.
 ```
 
 ---
@@ -251,11 +205,13 @@ second-precision timestamps could collide within the same second when
 ```
 FIX_COMPLETE
 
-Fix: STAGE-01-REVIEW-FIX-05
+Fix: STAGE-01-REVIEW-FIX-05-FIX1
+Parent Fix: STAGE-01-REVIEW-FIX-05 (96f01e6)
 Finding: S01-005
 Status: DONE
 Commit: <hash>
-Tests Added: 8
+Tests Added: 1 (Backup_UsesFullGuidSuffix)
+Tests Modified: IsUniqueTimestampedBackup (8 → 32)
 Tests Total: 121
 Tests Passed: 121
 Tests Failed: 0
@@ -263,6 +219,6 @@ Build: Release 0 errors 0 warnings
 Files Modified:
   - src/Anhei4Map.Infrastructure/Services/JsonSettingsStore.cs
   - tests/Anhei4Map.Tests/JsonSettingsStoreTests.cs
-Files NOT Modified (verified): <列出禁止路径确认未触及>
-Limitations: <如有>
+Files NOT Modified (verified): <列出>
+Limitations: None
 ```
