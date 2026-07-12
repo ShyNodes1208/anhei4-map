@@ -14,7 +14,7 @@
 - Current Finding: S01-006 (LOW) — UTF-8 test tautological assertion
 - Next Executor: Cursor
 - Allowed Paths: tests/Anhei4Map.Tests/FileLoggerTests.cs
-- UTF-8 BOM Rule: WITHOUT BOM (Encoding.UTF8 default)
+- UTF-8 BOM Rule: WITH BOM — EF BB BF (Encoding.UTF8 .NET 8 default)
 - Total Fixes: 6 | Fixed: 5 | Remaining: 1
 - S01-006: READY
 - NOT merged to main | Worktree NOT removed

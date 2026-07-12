@@ -56,12 +56,16 @@ Assert.Equal(Encoding.UTF8.GetPreamble().Length == 0 ? bytes : bytes, bytes);
 
 `FileLogger` 生产代码使用 `File.AppendAllText(..., Encoding.UTF8)`。
 
-.NET 的 `Encoding.UTF8` 属性**默认不发射 BOM**（`encoderShouldEmitUTF8Identifier = false`）。
+实际运行探针确认：.NET 8 的 `Encoding.UTF8` 属性**带 BOM**（`encoderShouldEmitUTF8Identifier = true`）。生成文件前三字节为 `EF-BB-BF`。
 
-**本任务采用：UTF-8 without BOM**
+冻结设计只规定 UTF-8，未强制无 BOM。FIX-06 是测试质量修复，不改变生产编码行为。
 
-- 文件开头不得为 `EF BB BF`
-- `expectedBytes` 不包含 BOM
+**本任务采用：UTF-8 WITH BOM**
+
+- 文件开头必须为 `EF BB BF`
+- `expectedBytes = Encoding.UTF8.GetPreamble() + Encoding.UTF8.GetBytes(expectedLogText)`
+- 或等价的 `expectedBytes = new UTF8Encoding(true).GetBytes(expectedLogText)`
+- BOM 是 3 字节的 `EF BB BF`，属于规范 UTF-8 BOM 标记
 - 如果实现与规则不一致，返回 `BLOCKED_PRODUCTION_DEFECT`，不得自行修改 src
 
 ---
@@ -83,10 +87,14 @@ public void Log_WritesUtf8Content()
     {
         var logger = CreateLogger(directory);
 
-        // 构造完整的预期日志行（与实际 FormatEntry 一致）
+        // 构造完整的预期日志文本（与实际 FormatEntry 一致）
         var expectedLine = $"[2026-07-12T10:20:30.123Z] [INFO] [i18n] {message}";
         var expectedText = expectedLine + Environment.NewLine;
-        var expectedBytes = Encoding.UTF8.GetBytes(expectedText);
+
+        // 生产实现使用 Encoding.UTF8 (WITH BOM)
+        var preamble = Encoding.UTF8.GetPreamble(); // EF BB BF
+        var contentBytes = Encoding.UTF8.GetBytes(expectedText);
+        var expectedBytes = preamble.Concat(contentBytes).ToArray();
 
         // 写入日志
         logger.Log(LogLevel.Info, "i18n", message);
@@ -94,20 +102,20 @@ public void Log_WritesUtf8Content()
         // 读取实际文件字节
         var actualBytes = File.ReadAllBytes(LogFilePath(directory));
 
-        // 精确字节比较
+        // 精确字节比较（含 BOM）
         Assert.Equal(expectedBytes, actualBytes);
 
-        // 验证 UTF-8 解码后中文正确
-        var decodedContent = Encoding.UTF8.GetString(actualBytes);
-        Assert.Contains(message, decodedContent);
-
-        // 验证无 UTF-8 BOM（EF BB BF）
-        Assert.False(
+        // 验证 UTF-8 BOM 存在（EF BB BF）
+        Assert.True(
             actualBytes.Length >= 3 &&
             actualBytes[0] == 0xEF &&
             actualBytes[1] == 0xBB &&
             actualBytes[2] == 0xBF,
-            "File should not contain UTF-8 BOM");
+            "File must contain UTF-8 BOM (EF BB BF)");
+
+        // 验证 UTF-8 解码后中文正确
+        var decodedContent = Encoding.UTF8.GetString(actualBytes);
+        Assert.Contains(message, decodedContent);
     }
     finally
     {
@@ -119,10 +127,11 @@ public void Log_WritesUtf8Content()
 **关键变更：**
 - 删除恒真的 `Assert.Equal(bytes, bytes)`
 - 使用固定 TimeProvider 确定预期内容
-- 构造 `expectedBytes` 与实际写入完全一致
-- `Assert.Equal(expectedBytes, actualBytes)` — 真实验证编码
-- 明确断言无 BOM（`EF BB BF` 不得出现）
+- `expectedBytes` 包含 BOM（`Encoding.UTF8.GetPreamble()` 即 `EF BB BF`）
+- `Assert.Equal(expectedBytes, actualBytes)` — 真实验证含 BOM 的 UTF-8 编码
+- 明确断言 BOM 存在（`EF BB BF` 必须在前三字节）
 - 验证中文 UTF-8 解码正确
+- 不修改生产代码
 
 ---
 
@@ -175,10 +184,10 @@ test: verify actual UTF-8 log bytes without BOM
 
 S01-006: Replace the tautological Assert.Equal(bytes, bytes) assertion
 in Log_WritesUtf8Content with precise byte-level verification. The test
-now constructs expected UTF-8 bytes (without BOM), compares against
-actual file bytes, and explicitly verifies the absence of the UTF-8 BOM
-signature (EF BB BF). Also validates Chinese text round-trips correctly
-through UTF-8 decode.
+now constructs expected UTF-8 bytes including the BOM preamble (EF BB BF),
+compares against actual file bytes, and explicitly verifies the presence
+of the UTF-8 BOM signature. Also validates Chinese text round-trips
+correctly through UTF-8 decode.
 ```
 
 ---
