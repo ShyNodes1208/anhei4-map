@@ -1,0 +1,22 @@
+Stage 01 Test Evidence
+Generated: 2026-07-12
+Branch: feature/01-foundation
+Commit: fdce5316458347f60fdbc441f557e2f545d40548
+
+--- dotnet --version ---
+8.0.422
+
+--- build.ps1 ---
+Build succeeded.
+0 Warnings
+0 Errors
+
+--- test.ps1 ---
+Tests succeeded.
+Total: 82 | Passed: 82 | Failed: 0 | Skipped: 0
+
+--- git diff --check ---
+(clean)
+
+--- git status ---
+(clean)
