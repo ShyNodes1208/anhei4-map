@@ -269,17 +269,34 @@ public class FileLoggerTests
     public void Log_WritesUtf8Content()
     {
         var directory = CreateTempDirectory();
-        const string message = "日志测试";
+        const string message = "数据库连接成功";
 
         try
         {
             var logger = CreateLogger(directory);
+
+            var expectedLine = $"[2026-07-12T10:20:30.123Z] [INFO] [i18n] {message}";
+            var expectedText = expectedLine + Environment.NewLine;
+
+            var preamble = Encoding.UTF8.GetPreamble();
+            var contentBytes = Encoding.UTF8.GetBytes(expectedText);
+            var expectedBytes = preamble.Concat(contentBytes).ToArray();
+
             logger.Log(LogLevel.Info, "i18n", message);
 
-            var bytes = File.ReadAllBytes(LogFilePath(directory));
-            var content = Encoding.UTF8.GetString(bytes);
-            Assert.Contains(message, content);
-            Assert.Equal(Encoding.UTF8.GetPreamble().Length == 0 ? bytes : bytes, bytes);
+            var actualBytes = File.ReadAllBytes(LogFilePath(directory));
+
+            Assert.Equal(expectedBytes, actualBytes);
+
+            Assert.True(
+                actualBytes.Length >= 3 &&
+                actualBytes[0] == 0xEF &&
+                actualBytes[1] == 0xBB &&
+                actualBytes[2] == 0xBF,
+                "File must contain UTF-8 BOM (EF BB BF)");
+
+            var decodedContent = Encoding.UTF8.GetString(actualBytes);
+            Assert.Contains(message, decodedContent);
         }
         finally
         {
