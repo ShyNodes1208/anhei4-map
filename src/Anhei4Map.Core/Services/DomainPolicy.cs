@@ -29,6 +29,11 @@ public static class DomainPolicy
             return false;
         }
 
+        if (!string.IsNullOrEmpty(parsed.UserInfo))
+        {
+            return false;
+        }
+
         var host = parsed.Host.ToLowerInvariant();
         return host is "helltides.com" or "www.helltides.com";
     }

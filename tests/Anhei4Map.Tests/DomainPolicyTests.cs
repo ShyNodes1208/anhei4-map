@@ -123,4 +123,22 @@ public class DomainPolicyTests
     {
         Assert.True(DomainPolicy.IsAllowed("https://helltides.com:443/map"));
     }
+
+    [Fact]
+    public void Blocks_UserinfoOnRootDomain()
+    {
+        Assert.False(DomainPolicy.IsAllowed("https://user:pass@helltides.com/"));
+    }
+
+    [Fact]
+    public void Blocks_UserinfoOnWwwDomain()
+    {
+        Assert.False(DomainPolicy.IsAllowed("https://user:pass@www.helltides.com/"));
+    }
+
+    [Fact]
+    public void Blocks_UserinfoOnLegitPath()
+    {
+        Assert.False(DomainPolicy.IsAllowed("https://x@helltides.com/map"));
+    }
 }
