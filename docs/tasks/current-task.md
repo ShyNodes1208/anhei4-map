@@ -7,10 +7,10 @@ READY
 FIX
 
 ## 修复编号
-STAGE-01-REVIEW-FIX-04
+STAGE-01-REVIEW-FIX-05
 
 ## 对应 Codex 发现
-S01-004 (MEDIUM)
+S01-005 (LOW)
 
 ## 阶段
 STAGE-01-FOUNDATION (修复轮)
@@ -25,204 +25,185 @@ D:\AIProjects\anhei4-map-worktrees\stage-01-foundation
 
 ## 问题证据
 
-[WindowBoundsNormalizer.cs:28,44-52](src/Anhei4Map.Core/Services/WindowBoundsNormalizer.cs#L28-L52):
+[JsonSettingsStore.cs:97-100](src/Anhei4Map.Infrastructure/Services/JsonSettingsStore.cs#L97-L100):
 
 ```csharp
-var primary = workAreas[0];
-// ...
-if (width > primary.Width) { width = primary.Width; }
-if (height > primary.Height) { height = primary.Height; }
+var timestamp = DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmss");
+var timestampedBakPath = Path.Combine(directory, $"settings.json.bak.{timestamp}");
+File.Move(_filePath, timestampedBakPath);
 ```
 
-`IsSufficientlyVisible()` 正确遍历所有工作区检查可见性，但 max size 裁剪始终使用 `workAreas[0]`。当副屏大于主屏（如笔记本 1920×1080 外接 3840×2160）时，副屏上合法的宽窗口被错误按主屏尺寸裁剪。
-
-现有测试两屏均为 1920×1080，未覆盖异构尺寸。
+`BackupCorruptedFile()` 在 `.bak` 已存在时使用秒级时间戳。同一秒内第二次损坏 → 相同文件名 → `File.Move` 抛 `IOException`（目标已存在） → 损坏文件无法备份。
 
 ---
 
 ## 允许修改的精确路径
 
-- `src/Anhei4Map.Core/Services/WindowBoundsNormalizer.cs`
-- `tests/Anhei4Map.Tests/WindowBoundsNormalizerTests.cs`
+- `src/Anhei4Map.Infrastructure/Services/JsonSettingsStore.cs`
+- `tests/Anhei4Map.Tests/JsonSettingsStoreTests.cs`
 
 ## 禁止修改范围
 
+- `src/Anhei4Map.Core/**`
 - `src/Anhei4Map.App/**`
-- `src/Anhei4Map.Infrastructure/**`
+- `src/Anhei4Map.Infrastructure/Logging/**`
 - `docs/design/**`
 - `docs/plans/**`
 - `*.csproj`
 - `*.sln`
-- 其他所有测试文件
-- 不调用真实显示器 API（System.Windows.Forms.Screen 等）
-- 不集成 DPI
-- 不涉及 Win32 或 WPF
+- 不删除旧备份
+- 不修改设置校验语义
+- 不新增第三方依赖
 
 ---
 
-## 目标工作区选择规则
+## 备份命名规则
 
-### 交集面积计算
+### 第一份备份
 
-对 `workAreas` 中每个 WorkArea，使用已有 `GetIntersectionArea()` 方法计算窗口与该工作区的交集面积。
+始终使用: `settings.json.bak`
 
-### 选择规则
+### 后续备份
 
-1. 计算窗口与每个工作区的交集面积。
-2. **选择交集面积最大的工作区**作为目标工作区。
-3. 如果多个工作区交集面积相同：**使用 `workAreas` 中索引较小的工作区**（保证确定性）。
-4. 如果没有任何正交集（即所有交集面积均为 0）：**使用 `workAreas[0]`** 作为回退目标工作区。
+当 `settings.json.bak` 已存在时，使用带唯一后缀的名称:
 
-### 负坐标工作区
+```
+settings.json.bak.<UTC毫秒时间戳>.<GUID后缀>
+```
 
-负坐标工作区（如 `Left=-1920`）必须正常参与交集面积计算和选择。不应被排除。
+- 时间戳格式: `yyyyMMddTHHmmssfffZ`（毫秒精度，UTC，Z 后缀）
+- GUID 后缀: `Guid.NewGuid().ToString("N")[..8]`（取 GUID 前 8 个十六进制字符）
 
-### 空工作区列表
+### 不覆盖规则
 
-`workAreas.Length == 0` → 保持现有回退行为不变（返回 `(0, EdgePadding, DefaultWidth, DefaultHeight, saved.Opacity)`）。
+- 不得以 `overwrite: true` 覆盖已有备份
+- 每次 `BackupCorruptedFile()` 必须创建**独立的新文件**
+- 如果目标路径恰好已存在（极端碰撞），`File.Move` 的 `IOException` 自然传播
 
----
+### 适用范围
 
-## 尺寸限制规则
+- JSON 语法损坏 (`JsonException`) → 使用相同唯一备份策略
+- 语义校验失败 (`Validate() == false`) → 使用相同唯一备份策略
+- 两种路径都通过 `BackupCorruptedFile()` 处理，无需区分
 
-选择目标工作区后：
+### 旧备份保留
 
-1. 宽度超过目标工作区宽度 → 限制到目标工作区宽度。
-2. 高度超过目标工作区高度 → 限制到目标工作区高度。
-3. 不应因为主屏较小而裁剪位于大副屏的合法窗口。
-4. 合法位于大副屏、尺寸不超过副屏的窗口保持不变。
-5. 小于最小尺寸（MinWidth=200, MinHeight=150）→ 保持现有默认值回退行为不变。
-6. 完全离屏 → 保持现有重置到主屏右上角行为不变。
-7. 20% 可见阈值 → 保持不变，不做任何修改。
-8. 宽度和高度独立限制：只超宽时不错误修改高度；只超高时不错误修改宽度。
+- 不删除任何旧备份文件
+- 不限制备份总数上限（LOW severity，不引入复杂性换有限磁盘节省）
+
+### 异常传播
+
+- `File.Move` 失败 → 异常向 `LoadAsync()` 调用方传播
+- 不在 `BackupCorruptedFile()` 内吞异常
 
 ---
 
 ## RED 阶段 — 先写失败测试
 
-### 测试 1: `LargerSecondaryScreen_DoesNotClampToSmallerPrimary`
+### 测试 1: `Backup_UsesBaseBakNameForFirstCorruption`
+
+首次损坏 → 创建 `settings.json.bak`，内容匹配原始损坏 JSON。
+
+### 测试 2: `Backup_ExistingBaseBak_CreatesUniqueAdditionalBackup`
+
+预创 `settings.json.bak`，写入新的损坏 `settings.json` → 新备份使用带时间戳和 GUID 的文件名，旧 `.bak` 未被覆盖。
+
+### 测试 3: `Backup_MultipleBackups_AreAllUnique`
+
+快速连续 3 次损坏 → 每次创建独立备份文件，文件名全部不同，内容分别保留。
 
 ```csharp
-// 主屏 1920×1080, 副屏 2560×1440 at Left=1920
-// 窗口位于副屏, 宽 2500 (大于主屏但小于副屏)
-// 期望: 窗口保持不变, 不按主屏 1920 裁剪
-var workAreas = new[] {
-    new WorkArea(0, 0, 1920, 1080),
-    new WorkArea(1920, 0, 2560, 1440)
-};
-var saved = new WindowPlacement(2000, 100, 2500, 800, 0.9);
-var result = WindowBoundsNormalizer.Normalize(saved, workAreas);
-Assert.Equal(2500, result.Width);
-Assert.Equal(800, result.Height);
+[Fact]
+public async Task Backup_MultipleBackups_AreAllUnique()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var store = new JsonSettingsStore(directory);
+
+        // First: writes corrupted JSON to settings.json, load → backup
+        await File.WriteAllTextAsync(Path.Combine(directory, "settings.json"), "{ corrupt A }");
+        await store.LoadAsync();
+
+        // Second: new corrupted content
+        await File.WriteAllTextAsync(Path.Combine(directory, "settings.json"), "{ corrupt B }");
+        await store.LoadAsync();
+
+        // Third: new corrupted content
+        await File.WriteAllTextAsync(Path.Combine(directory, "settings.json"), "{ corrupt C }");
+        await store.LoadAsync();
+
+        var bakFiles = Directory.GetFiles(directory, "settings.json.bak*");
+        Assert.True(bakFiles.Length >= 3);
+        // All filenames are distinct
+        Assert.Equal(bakFiles.Distinct().Count(), bakFiles.Length);
+    }
+    finally { CleanupTempDirectory(directory); }
+}
 ```
 
-### 测试 2: `OversizedWindowOnSecondary_ClampsToSecondaryWorkArea`
+### 测试 4: `Backup_ExistingTimestampLikeBak_IsNotOverwritten`
 
-窗口在副屏但尺寸超过副屏 → 按副屏尺寸限制，不按主屏。
+预创 `settings.json.bak.20260712T120000000Z.abc12345` → 新损坏加载不覆盖该文件。
 
-### 测试 3: `NegativeCoordinateSecondary_IsSelectedByIntersection`
+### 测试 5: `Backup_EveryBackupPreservesOriginalBytes`
 
-副屏位于主屏左侧（负数坐标），窗口合法位于副屏 → 窗口保持不变。
+每轮写入不同损坏内容 → 验证每个备份文件分别保留当次原始内容。
 
-### 测试 4: `WindowSpanningTwoScreens_SelectsLargestIntersection`
+### 测试 6: `Backup_SemanticInvalidSettings_UsesUniqueBackupPolicy`
 
-窗口跨越两个屏幕 → 选择交集面积最大的工作区作为限制目标。
+格式合法但 Validate()=false（如 Width=0）→ 也使用唯一备份文件名。
 
-### 测试 5: `EqualIntersection_UsesStableTieBreak`
+### 测试 7: `Backup_SyntaxCorrupted_UsesUniqueBackupPolicy`
 
-交集面积相同时使用较小的 workAreas 索引。
+JSON 语法错误 → 也使用唯一备份文件名。
 
-### 测试 6: `FullyOffscreen_UsesPrimaryFallback`
+### 测试 8: `Backup_ExistingManyBackups_DoesNotDeleteOldBackups`
 
-没有任何正交集 → 使用 workAreas[0] 的回退规则（现有行为不变）。
-
-### 测试 7: `EmptyWorkAreas_UsesExistingSafeFallback`
-
-空列表 → 现有回退行为不变。
-
-### 测试 8: `ExistingValidPrimaryWindow_RemainsUnchanged`
-
-主屏正常窗口不回归。
-
-### 测试 9: `ExistingPartialVisibilityThresholdTests_RemainPassing`
-
-20% 阈值测试继续通过。
-
-### 测试 10: `WidthAndHeightAreClampedIndependently`
-
-只超宽时高度不变；只超高时宽度不变。
+预创 5 个旧 `settings.json.bak.*` 文件 → 新损坏加载后旧备份全部保留。
 
 ### RED 预期
 
 ```
-dotnet test --filter "FullyQualifiedName~WindowBoundsNormalizerTests" -c Release
+dotnet test --filter "FullyQualifiedName~JsonSettingsStoreTests" -c Release
 ```
 
-预期新增测试 FAIL — 当前实现固定使用 `workAreas[0]` 进行尺寸裁剪，大副屏合法窗口被错误裁剪。
+预期新增测试 FAIL — 当前秒级时间戳在同一秒内多次损坏时产生相同文件名导致冲突。
 
 ---
 
 ## GREEN 阶段 — 最小实现
 
-### 1. 添加 `FindBestWorkArea` 辅助方法
+修改 `BackupCorruptedFile()` 方法：
 
 ```csharp
-private static WorkArea FindBestWorkArea(
-    int left, int top, int width, int height, WorkArea[] workAreas)
+private void BackupCorruptedFile()
 {
-    var bestIndex = 0;
-    long bestArea = 0;
+    if (!File.Exists(_filePath))
+        return;
 
-    for (var i = 0; i < workAreas.Length; i++)
+    if (!File.Exists(_bakFilePath))
     {
-        var intersection = GetIntersectionArea(left, top, width, height, workAreas[i]);
-        if (intersection > bestArea)
-        {
-            bestArea = intersection;
-            bestIndex = i;
-        }
+        File.Move(_filePath, _bakFilePath);
+        return;
     }
 
-    return workAreas[bestIndex];
+    var directory = Path.GetDirectoryName(_filePath)!;
+    var timestamp = DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmssfff'Z'");
+    var suffix = Guid.NewGuid().ToString("N")[..8];
+    var uniquePath = Path.Combine(directory, $"settings.json.bak.{timestamp}.{suffix}");
+    File.Move(_filePath, uniquePath);
 }
 ```
 
-### 2. 修改 `Normalize` 方法
-
-将第 28 行的 `var primary = workAreas[0]` 保持不变（用于 fallback reset）。
-
-将第 44-52 行的 max size 裁剪改为使用目标工作区：
-
-```csharp
-var targetArea = FindBestWorkArea(left, top, width, height, workAreas);
-
-if (width > targetArea.Width)
-{
-    width = targetArea.Width;
-}
-
-if (height > targetArea.Height)
-{
-    height = targetArea.Height;
-}
-```
-
-**关键：** `IsSufficientlyVisible` 和 fallback reset 的 `primary` 保持不变。只有 max size 裁剪改用 `targetArea`。
-
-### 最小修改原则
-
-- 不改动 `IsSufficientlyVisible`、`GetIntersectionArea` 的实现
-- 不改动 fallback reset 逻辑（第 59-64 行）
-- 不改动 min size clamp（第 34-42 行）
-- 不新增第三方依赖
-- 不调用真实显示器 API
+**变更：** 仅修改 `BackupCorruptedFile()` 方法中的时间戳格式和文件名生成逻辑。不改动 `LoadAsync`、`SaveAsync`、`CleanupResidualTmp` 或其他方法。
 
 ---
 
 ## 定向测试命令
 
 ```powershell
-dotnet test tests/Anhei4Map.Tests/ --filter "FullyQualifiedName~WindowBoundsNormalizerTests" -c Release
+dotnet test tests/Anhei4Map.Tests/ --filter "FullyQualifiedName~JsonSettingsStoreTests" -c Release
 ```
 
 ## 完整测试命令
@@ -241,32 +222,26 @@ dotnet build -c Release
 
 ## 完成标准
 
-- [ ] `FindBestWorkArea` 辅助方法实现
-- [ ] `Normalize` 中 max size 裁剪使用 `targetArea`
-- [ ] 10 个新测试写入 `WindowBoundsNormalizerTests.cs`
+- [ ] `BackupCorruptedFile()` 修改为毫秒时间戳 + GUID 后缀
+- [ ] 8 个新测试写入 `JsonSettingsStoreTests.cs`
 - [ ] `dotnet build -c Release` 0 错误 0 警告
 - [ ] 定向测试 FAIL (RED)
-- [ ] 定向测试 PASS (GREEN: 24/24: 14原有 + 10新增)
-- [ ] 完整测试 `dotnet test -c Release --no-build` 全部通过 (113: 103原有 + 10新增)
+- [ ] 定向测试 PASS (GREEN: 26/26: 18原有 + 8新增)
+- [ ] 完整测试 `dotnet test -c Release --no-build` 全部通过 (121: 113原有 + 8新增)
 - [ ] `git diff --check` clean
-- [ ] 只修改了 `WindowBoundsNormalizer.cs` 和 `WindowBoundsNormalizerTests.cs`
-- [ ] 原有 14 个测试全部继续通过（无回归）
+- [ ] 只修改了 `JsonSettingsStore.cs` 和 `JsonSettingsStoreTests.cs`
 
 ---
 
 ## Git 提交信息
 
 ```
-fix: clamp window bounds to selected work area instead of primary
+fix: prevent settings backup name collisions
 
-S01-004: WindowBoundsNormalizer now selects the target work area based
-on largest intersection area, then clamps max width/height to that area.
-Previously max size was always clamped to workAreas[0], incorrectly
-resizing valid windows on larger secondary monitors.
-
-Added 10 tests: larger secondary, negative coordinate, spanning screens,
-equal intersection tie-break, independent width/height clamping, and
-regression guards for existing behavior.
+S01-005: BackupCorruptedFile now uses millisecond-precision UTC timestamps
+with a GUID suffix to guarantee unique backup filenames. Previously,
+second-precision timestamps could collide within the same second when
+.bak already existed, causing File.Move to fail with IOException.
 ```
 
 ---
@@ -276,18 +251,18 @@ regression guards for existing behavior.
 ```
 FIX_COMPLETE
 
-Fix: STAGE-01-REVIEW-FIX-04
-Finding: S01-004
+Fix: STAGE-01-REVIEW-FIX-05
+Finding: S01-005
 Status: DONE
 Commit: <hash>
-Tests Added: 10
-Tests Total: 113
-Tests Passed: 113
+Tests Added: 8
+Tests Total: 121
+Tests Passed: 121
 Tests Failed: 0
 Build: Release 0 errors 0 warnings
 Files Modified:
-  - src/Anhei4Map.Core/Services/WindowBoundsNormalizer.cs
-  - tests/Anhei4Map.Tests/WindowBoundsNormalizerTests.cs
+  - src/Anhei4Map.Infrastructure/Services/JsonSettingsStore.cs
+  - tests/Anhei4Map.Tests/JsonSettingsStoreTests.cs
 Files NOT Modified (verified): <列出禁止路径确认未触及>
 Limitations: <如有>
 ```

@@ -102,6 +102,16 @@
 
 **修复要求:** 根据窗口主要相交的 WorkArea（而非固定 `workAreas[0]`）决定 max size。补充副显示器大于主显示器的负坐标多显示器测试。
 
+**修复记录:**
+- 状态: FIXED_PENDING_CODEX_REREVIEW
+- 修复任务: STAGE-01-REVIEW-FIX-04
+- 实现 Commit: a8d7411db742a82305c02bf0698b80bc0ae9615d
+- 日期: 2026-07-12
+- 修改: WindowBoundsNormalizer.cs (+FindBestWorkArea, targetArea替代primary), WindowBoundsNormalizerTests.cs (+10测试)
+- 测试: WindowBoundsNormalizerTests 24/24 PASS, 完整 113/113 PASS
+- Build: Release 0 errors 0 warnings
+- Claude 验收: PASS — FindBestWorkArea 使用 > 确保确定性 tie-break; primary 仅保留用于 fallback reset; 所有原有测试未修改且继续通过
+
 ---
 
 ## LOW 发现裁决
