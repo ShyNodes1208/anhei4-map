@@ -29,6 +29,14 @@
 
 **修复要求:** 反序列化成功后调用 `Validate()`；失败时执行 `BackupCorruptedFile()` + 返回默认值。补充 Width=0、Opacity>1 等语义无效 JSON 的加载测试。
 
+**修复记录:**
+- Commit: aac877786ee038851a2ea31fcd04d55dcaf60946
+- 日期: 2026-07-12
+- 修改: JsonSettingsStore.cs (+4行 Validate 调用), JsonSettingsStoreTests.cs (+4测试)
+- 测试: 86/86 PASS (新增4: Width=0, Height=100, Opacity=1.5, ZoomLevel=10)
+- Build: Release 0 errors 0 warnings
+- Claude 验收: APPROVED — 变更最小精确、测试有效、仅触及允许路径
+
 ---
 
 ### S01-002: DomainPolicy 接受非空 UserInfo — CONFIRMED

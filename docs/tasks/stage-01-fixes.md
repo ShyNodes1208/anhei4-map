@@ -12,7 +12,7 @@
 
 | 序号 | 发现 | 严重级别 | 阻塞合并 |
 |------|------|----------|----------|
-| FIX-01 | LoadAsync 调用 Validate() | MEDIUM | 是 |
+| FIX-01 | LoadAsync 调用 Validate() | MEDIUM | 是 | DONE (aac8777) |
 | FIX-02 | DomainPolicy 检查 UserInfo | MEDIUM | 是 |
 | FIX-03 | FileLogger 10MB 轮转 | MEDIUM | 是 |
 | FIX-04 | WindowBounds 多显示器 max size | MEDIUM | 是 |
