@@ -1,24 +1,21 @@
 ﻿# Project status
 
-- Repository: https://github.com/ShyNodes1208/anhei4-map.git
-- Main branch: main
-- Current phase: STAGE-01-FOUNDATION
-- Design baseline: design-baseline-v1 (tag, c3fe31c)
-- Active branch: feature/01-foundation
-- Active worktree: D:\AIProjects\anhei4-map-worktrees\stage-01-foundation
-- Completed tasks:
-  - STAGE-01-TASK-01 (SCAFFOLD) — dc95214
-  - STAGE-01-TASK-02 (BEHAVIOR) — 2de1cf1
-  - STAGE-01-TASK-03 (BEHAVIOR) — a7e4125
-  - STAGE-01-TASK-04 (BEHAVIOR) — 246f034
-  - STAGE-01-TASK-05 (BEHAVIOR) — 719b90c
-  - STAGE-01-TASK-06 (BEHAVIOR) — 806e055
-- Active task: STAGE-01-TASK-07
-- Task type: BEHAVIOR
-- Task status: READY
-- Next executor: Cursor
-- Latest: build PASS, 60/60 PASS
+- Main branch: main | Phase: STAGE-01-FOUNDATION
+- Branch: feature/01-foundation | Worktree: D:\AIProjects\anhei4-map-worktrees\stage-01-foundation
+- Completed: TASK-01..07 | Active: STAGE-01-TASK-08 (BEHAVIOR, READY)
+- Tests: 70/70 PASS | Build: 0 errors
 
-## Architecture decisions
-- ADR-001: Navigation host allowlist restricted to root + www (minimum privilege, supersedes 02-architecture line 215)
-- UserInfo in URL not explicitly blocked — ACCEPTED_LIMITATION (MVP has no user-supplied URL path)
+## Retry parameters (TASK-07)
+Sequence: [0,1000,2000,4000,8000,30000]ms | Max retries: 10 (attempt 0-9)
+Total max loads: 11 (1 initial + 10 retries) | attempt 0 = immediate (0ms)
+
+## Stage 03 integration constraints
+- Single retry schedule at a time
+- Increment attempt on each failure
+- Reset attempt to 0 on success
+- No-activity map is NOT a load failure (do not retry)
+- Manual refresh cancels pending retry
+- App exit cancels pending retry
+
+## Deferred
+TASK-04B: Validate-after-Load | Log rotation: Stage 04

@@ -1,10 +1,10 @@
 # 当前任务
 
 ## 任务编号
-STAGE-01-TASK-07
+STAGE-01-TASK-08
 
 ## 任务名称
-有限指数退避重试策略
+日志抽象和本地文件日志
 
 ## 任务类型
 BEHAVIOR
@@ -16,67 +16,67 @@ READY
 STAGE-01-FOUNDATION
 
 ## 前置条件
-STAGE-01-TASK-06 完成——`DomainPolicy` 实现，60 个测试通过。
+STAGE-01-TASK-07 完成——70 个测试通过。
 
-## 任务目标
-实现与网络、Task.Delay、WebView2 完全解耦的纯逻辑退避策略。输入为 attempt 编号，返回延迟毫秒数或 null（停止重试）。
-
-## 重试参数（来自 `01-product-design.md`）
-
-| 参数 | 值 |
-|------|----|
-| attempt 起始 | 0（首次调用 = attempt 0） |
-| 延迟序列 | [0, 1000, 2000, 4000, 8000, 30000] |
-| attempt 6+ | 30000ms（最大） |
-| 最大重试 | 10（attempt 10 → null） |
-| attempt < 0 | 抛出 ArgumentOutOfRangeException |
+## 日志格式（Stage 01 决策）
+```
+[2026-07-12T10:20:30.123Z] [INFO] [source] message
+```
+- 时间：UTC ISO 8601，含毫秒
+- 级别：INFO / WARN / ERROR
+- 文件：app.log（固定名）
+- 编码：UTF-8
+- 模式：追加写入
+- 并发：`SemaphoreSlim` 串行化
+- 消息 CR/LF：替换为空格
+- 写入失败：向调用方抛出 `IOException`
+- 空消息：写入 `"(empty)"`
+- 异常：`{ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}`
+- 日志目录：构造函数注入（生产路径 `%LocalAppData%\Anhei4Map\`）
+- 轮转：Stage 04 延期
 
 ## 允许修改
-- Create: `src/Anhei4Map.Core/Services/RetryPolicy.cs`
-- Create: `tests/Anhei4Map.Tests/RetryPolicyTests.cs`
+- Create: `src/Anhei4Map.Core/Logging/IAppLogger.cs`
+- Create: `src/Anhei4Map.Infrastructure/Logging/FileLogger.cs`
+- Create: `tests/Anhei4Map.Tests/FileLoggerTests.cs`
+- Modify: `src/Anhei4Map.Infrastructure/Anhei4Map.Infrastructure.csproj`（如果需要 Core 引用）
 
 ## 禁止修改
-- 不得修改 `src/Anhei4Map.App/`、`src/Anhei4Map.Infrastructure/`
-- 不得调用 `Task.Delay`、网络、WebView2
-- 不得修改现有 Services
+- 不得修改 `src/Anhei4Map.App/`
+- 不得修改现有 Core Services（RetryPolicy/DomainPolicy/WindowBoundsNormalizer）
+- 不得修改 JsonSettingsStore
 
-## RED 测试清单 (10 tests)
+## RED 测试清单 (12 tests)
 ```
-T7.1  attempt 0 → 0ms
-T7.2  attempt 1 → 1000ms
-T7.3  attempt 2 → 2000ms
-T7.4  attempt 3 → 4000ms
-T7.5  attempt 4 → 8000ms
-T7.6  attempt 5 → 30000ms
-T7.7  attempt 6-9 → 30000ms (max)
-T7.8  attempt 10 → null (stop)
-T7.9  attempt -1 → ArgumentOutOfRangeException
-T7.10 attempt 11 → null (beyond max)
+T8.1  目录不存在时自动创建
+T8.2  首次写入生成日志文件
+T8.3  第二次写入追加（不覆盖）
+T8.4  INFO 格式正确
+T8.5  WARN 格式正确
+T8.6  ERROR 含异常类型和消息
+T8.7  可控时间（构造函数注入 TimeProvider）
+T8.8  UTF-8 内容验证
+T8.9  空消息写 "(empty)"
+T8.10 多行消息 CR/LF 替换为空格
+T8.11 并发写入不交错（SemaphoreSlim）
+T8.12 测试不写真实 LocalAppData（使用临时目录）
 ```
 
 ## GREEN 最小实现
-`RetryPolicy.NextDelay(int attempt) → int?` 纯静态方法。
-Delays = {0, 1000, 2000, 4000, 8000, 30000}，MaxRetries = 10。
+`IAppLogger` (Core): `void Log(LogLevel level, string source, string message, Exception? ex = null)`
+
+`FileLogger` (Infrastructure): 构造函数 `(string directory, TimeProvider? timeProvider = null)`，实现 `IAppLogger`。
 
 ## 验证命令
 ```powershell
-dotnet test anhei4-map.sln -c Release --filter "FullyQualifiedName~RetryPolicyTests"
+dotnet test anhei4-map.sln -c Release --filter "FullyQualifiedName~FileLoggerTests"
 dotnet test anhei4-map.sln -c Release --no-build
 ```
 
 ## 完成标准
-10/10 定向 + 60 已有 = 70 全部通过
+12/12 定向 + 70 已有 = 82 全部通过。build 0 错误。
 
 ## Git 提交信息
 ```
-feat: add retry backoff policy (10 tests)
-```
-
-## 完成后报告格式
-```
-STAGE-01-TASK-07 完成报告
-- 定向测试: [N]/10
-- 完整测试: [N]/70
-- dotnet build: [结果]
-- Git commit: [hash]
+feat: add local file logging (12 tests)
 ```
