@@ -41,14 +41,16 @@ public static class WindowBoundsNormalizer
             height = DefaultHeight;
         }
 
-        if (width > primary.Width)
+        var targetArea = FindBestWorkArea(left, top, width, height, workAreas);
+
+        if (width > targetArea.Width)
         {
-            width = primary.Width;
+            width = targetArea.Width;
         }
 
-        if (height > primary.Height)
+        if (height > targetArea.Height)
         {
-            height = primary.Height;
+            height = targetArea.Height;
         }
 
         if (IsSufficientlyVisible(left, top, width, height, workAreas))
@@ -88,6 +90,29 @@ public static class WindowBoundsNormalizer
         }
 
         return false;
+    }
+
+    private static WorkArea FindBestWorkArea(
+        int left,
+        int top,
+        int width,
+        int height,
+        WorkArea[] workAreas)
+    {
+        var bestIndex = 0;
+        long bestArea = 0;
+
+        for (var i = 0; i < workAreas.Length; i++)
+        {
+            var intersection = GetIntersectionArea(left, top, width, height, workAreas[i]);
+            if (intersection > bestArea)
+            {
+                bestArea = intersection;
+                bestIndex = i;
+            }
+        }
+
+        return workAreas[bestIndex];
     }
 
     private static long GetIntersectionArea(
