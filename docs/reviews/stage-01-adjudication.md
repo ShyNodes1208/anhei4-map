@@ -127,6 +127,18 @@
 
 **修复建议:** 使用毫秒精度时间戳或 GUID 后缀。补充候选文件名已存在时的测试。
 
+**修复记录:**
+- 状态: FIXED_PENDING_CODEX_REREVIEW
+- 修复任务: STAGE-01-REVIEW-FIX-05 → FIX1
+- 初始实现: 96f01e66ecd9b9345199bba780f945d59192a4e1
+- 初次验收: CHANGES_REQUIRED (GUID truncated to 8 chars, ~32 bits)
+- 最终实现: d599ca7c220a65061f449594ccd496018f3291a9
+- 日期: 2026-07-12
+- 修改: JsonSettingsStore.cs (移除 [..8] 截断), JsonSettingsStoreTests.cs (suffix 8→32 + Backup_UsesFullGuidSuffix)
+- 测试: JsonSettingsStoreTests 27/27 PASS, 完整 122/122 PASS
+- Build: Release 0 errors 0 warnings
+- Claude 验收: PASS — Full 32-char GUID 提供 ~128 位随机空间，无需碰撞重试
+
 ---
 
 ### S01-006: UTF-8 测试恒真断言 — CONFIRMED
