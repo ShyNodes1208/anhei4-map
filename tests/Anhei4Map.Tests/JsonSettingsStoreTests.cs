@@ -21,6 +21,35 @@ public class JsonSettingsStoreTests
         }
     }
 
+    private static string SettingsPath(string directory) => Path.Combine(directory, "settings.json");
+
+    private static string BaseBakPath(string directory) => Path.Combine(directory, "settings.json.bak");
+
+    private static string[] BackupFiles(string directory) =>
+        Directory.GetFiles(directory, "settings.json.bak*");
+
+    private static bool IsUniqueTimestampedBackup(string fileName)
+    {
+        const string prefix = "settings.json.bak.";
+        if (!fileName.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var remainder = fileName[prefix.Length..];
+        var separator = remainder.LastIndexOf('.');
+        if (separator <= 0 || separator >= remainder.Length - 1)
+        {
+            return false;
+        }
+
+        var timestamp = remainder[..separator];
+        var suffix = remainder[(separator + 1)..];
+        return timestamp.EndsWith("Z", StringComparison.Ordinal)
+            && suffix.Length == 8
+            && suffix.All(static c => Uri.IsHexDigit(c));
+    }
+
     [Fact]
     public async Task Save_FileExists()
     {
@@ -448,6 +477,243 @@ public class JsonSettingsStoreTests
 
             Assert.Equal(360, loaded.Placement.Height);
             Assert.True(File.Exists(Path.Combine(directory, "settings.json.bak")));
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Backup_UsesBaseBakNameForFirstCorruption()
+    {
+        var directory = CreateTempDirectory();
+        const string corruptedJson = "{ first corruption }";
+
+        try
+        {
+            await File.WriteAllTextAsync(SettingsPath(directory), corruptedJson);
+            var store = new JsonSettingsStore(directory);
+
+            await store.LoadAsync();
+
+            Assert.True(File.Exists(BaseBakPath(directory)));
+            Assert.False(File.Exists(SettingsPath(directory)));
+            Assert.Equal(corruptedJson, await File.ReadAllTextAsync(BaseBakPath(directory)));
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Backup_ExistingBaseBak_CreatesUniqueAdditionalBackup()
+    {
+        var directory = CreateTempDirectory();
+        const string originalBakContent = "original bak content";
+        const string corruptedJson = "{ new corruption }";
+
+        try
+        {
+            await File.WriteAllTextAsync(BaseBakPath(directory), originalBakContent);
+            await File.WriteAllTextAsync(SettingsPath(directory), corruptedJson);
+            var store = new JsonSettingsStore(directory);
+
+            await store.LoadAsync();
+
+            Assert.Equal(originalBakContent, await File.ReadAllTextAsync(BaseBakPath(directory)));
+
+            var additionalBackups = BackupFiles(directory)
+                .Where(path => !string.Equals(path, BaseBakPath(directory), StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            Assert.Single(additionalBackups);
+            Assert.True(IsUniqueTimestampedBackup(Path.GetFileName(additionalBackups[0])));
+            Assert.Equal(corruptedJson, await File.ReadAllTextAsync(additionalBackups[0]));
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Backup_MultipleBackups_AreAllUnique()
+    {
+        var directory = CreateTempDirectory();
+
+        try
+        {
+            var store = new JsonSettingsStore(directory);
+
+            await File.WriteAllTextAsync(SettingsPath(directory), "{ corrupt A }");
+            await store.LoadAsync();
+
+            await File.WriteAllTextAsync(SettingsPath(directory), "{ corrupt B }");
+            await store.LoadAsync();
+
+            await File.WriteAllTextAsync(SettingsPath(directory), "{ corrupt C }");
+            await store.LoadAsync();
+
+            var bakFiles = BackupFiles(directory);
+            Assert.True(bakFiles.Length >= 3);
+            Assert.Equal(bakFiles.Distinct(StringComparer.OrdinalIgnoreCase).Count(), bakFiles.Length);
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Backup_ExistingTimestampLikeBak_IsNotOverwritten()
+    {
+        var directory = CreateTempDirectory();
+        const string existingBackupContent = "existing timestamp backup";
+        const string corruptedJson = "{ latest corruption }";
+        var existingBackupPath = Path.Combine(directory, "settings.json.bak.20260712T120000000Z.abc12345");
+
+        try
+        {
+            await File.WriteAllTextAsync(existingBackupPath, existingBackupContent);
+            await File.WriteAllTextAsync(BaseBakPath(directory), "base bak");
+            await File.WriteAllTextAsync(SettingsPath(directory), corruptedJson);
+            var store = new JsonSettingsStore(directory);
+
+            await store.LoadAsync();
+
+            Assert.Equal(existingBackupContent, await File.ReadAllTextAsync(existingBackupPath));
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Backup_EveryBackupPreservesOriginalBytes()
+    {
+        var directory = CreateTempDirectory();
+        const string firstCorruption = "{ corrupt A bytes }";
+        const string secondCorruption = "{ corrupt B bytes }";
+        const string thirdCorruption = "{ corrupt C bytes }";
+
+        try
+        {
+            var store = new JsonSettingsStore(directory);
+
+            await File.WriteAllTextAsync(SettingsPath(directory), firstCorruption);
+            await store.LoadAsync();
+
+            await File.WriteAllTextAsync(SettingsPath(directory), secondCorruption);
+            await store.LoadAsync();
+
+            await File.WriteAllTextAsync(SettingsPath(directory), thirdCorruption);
+            await store.LoadAsync();
+
+            var backupContents = BackupFiles(directory)
+                .Select(path => File.ReadAllText(path))
+                .ToArray();
+
+            Assert.Contains(firstCorruption, backupContents);
+            Assert.Contains(secondCorruption, backupContents);
+            Assert.Contains(thirdCorruption, backupContents);
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Backup_SemanticInvalidSettings_UsesUniqueBackupPolicy()
+    {
+        var directory = CreateTempDirectory();
+        const string originalBakContent = "existing semantic bak";
+        var defaults = AppSettings.CreateDefaults();
+        var invalidJson = JsonSerializer.Serialize(
+            defaults with { Placement = defaults.Placement with { Width = 0 } });
+
+        try
+        {
+            await File.WriteAllTextAsync(BaseBakPath(directory), originalBakContent);
+            await File.WriteAllTextAsync(SettingsPath(directory), invalidJson);
+            var store = new JsonSettingsStore(directory);
+
+            await store.LoadAsync();
+
+            Assert.Equal(originalBakContent, await File.ReadAllTextAsync(BaseBakPath(directory)));
+
+            var additionalBackups = BackupFiles(directory)
+                .Where(path => !string.Equals(path, BaseBakPath(directory), StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            Assert.Single(additionalBackups);
+            Assert.True(IsUniqueTimestampedBackup(Path.GetFileName(additionalBackups[0])));
+            Assert.Equal(invalidJson, await File.ReadAllTextAsync(additionalBackups[0]));
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Backup_SyntaxCorrupted_UsesUniqueBackupPolicy()
+    {
+        var directory = CreateTempDirectory();
+        const string originalBakContent = "existing syntax bak";
+        const string corruptedJson = "{ syntax corruption }";
+
+        try
+        {
+            await File.WriteAllTextAsync(BaseBakPath(directory), originalBakContent);
+            await File.WriteAllTextAsync(SettingsPath(directory), corruptedJson);
+            var store = new JsonSettingsStore(directory);
+
+            await store.LoadAsync();
+
+            Assert.Equal(originalBakContent, await File.ReadAllTextAsync(BaseBakPath(directory)));
+
+            var additionalBackups = BackupFiles(directory)
+                .Where(path => !string.Equals(path, BaseBakPath(directory), StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            Assert.Single(additionalBackups);
+            Assert.True(IsUniqueTimestampedBackup(Path.GetFileName(additionalBackups[0])));
+            Assert.Equal(corruptedJson, await File.ReadAllTextAsync(additionalBackups[0]));
+        }
+        finally
+        {
+            CleanupTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Backup_ExistingManyBackups_DoesNotDeleteOldBackups()
+    {
+        var directory = CreateTempDirectory();
+        var existingBackups = Enumerable.Range(0, 5)
+            .Select(i => Path.Combine(directory, $"settings.json.bak.20260712T12000000{i}Z.deadbeef"))
+            .ToArray();
+
+        try
+        {
+            foreach (var backupPath in existingBackups)
+            {
+                await File.WriteAllTextAsync(backupPath, $"old backup {Path.GetFileName(backupPath)}");
+            }
+
+            await File.WriteAllTextAsync(BaseBakPath(directory), "base bak");
+            await File.WriteAllTextAsync(SettingsPath(directory), "{ new corruption }");
+            var store = new JsonSettingsStore(directory);
+
+            await store.LoadAsync();
+
+            foreach (var backupPath in existingBackups)
+            {
+                Assert.True(File.Exists(backupPath));
+            }
+
+            Assert.True(BackupFiles(directory).Length >= existingBackups.Length + 1);
         }
         finally
         {
