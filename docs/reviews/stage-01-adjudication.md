@@ -75,6 +75,18 @@
 
 **修复要求:** 实现 10MB 阈值检查、app.log → app.1.log → app.2.log → 删除最旧文件的轮转逻辑。补充阈值触发、轮转顺序、淘汰行为的测试。补充写入异常后再次写入的测试（验证 finally 释放锁，非证明死锁缺陷）。
 
+**修复记录:**
+- 状态: FIXED_PENDING_CODEX_REREVIEW
+- 修复任务: STAGE-01-REVIEW-FIX-03
+- 规格 Commit: 370bf1ce25d1b4f9f174dd84df683c39ab6e5a9b
+- 实现 Commit: 10aba4eb94ea7de7cf6e9bed7655308d683cf600
+- 日期: 2026-07-12
+- 修改: FileLogger.cs (+43/-3行 构造函数/RotateIfNeeded), FileLoggerTests.cs (+14测试)
+- 测试: FileLoggerTests 26/26 PASS, 完整 103/103 PASS
+- 并发: 5/5 迭代通过
+- Build: Release 0 errors 0 warnings
+- Claude 验收: PASS — 全部10项规格要素验证通过；确定性的失败测试使用 FileShare.None；UTF-8 字节计算精确
+
 ---
 
 ### S01-004: WindowBoundsNormalizer 按主显示器裁剪所有窗口 — CONFIRMED

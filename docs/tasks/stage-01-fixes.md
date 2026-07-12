@@ -14,7 +14,7 @@
 |------|------|----------|----------|
 | FIX-01 | LoadAsync 调用 Validate() | MEDIUM | 是 | DONE (aac8777) |
 | FIX-02 | DomainPolicy 检查 UserInfo | MEDIUM | 是 | DONE (bc8dfec) |
-| FIX-03 | FileLogger 10MB 轮转 | MEDIUM | 是 | SPEC_READY |
+| FIX-03 | FileLogger 10MB 轮转 | MEDIUM | 是 | DONE (10aba4e) |
 | FIX-04 | WindowBounds 多显示器 max size | MEDIUM | 是 |
 | FIX-05 | 备份时间戳精度 | LOW | 否 |
 | FIX-06 | UTF-8 测试恒真断言 | LOW | 否 |
