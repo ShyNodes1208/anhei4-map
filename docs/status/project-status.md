@@ -1,25 +1,25 @@
-﻿# Project status
+# Project status
 
 - Stage 01: COMPLETE (MERGED_TO_MAIN)
 - Stage 02: COMPLETE (v0.2.0-webview-shell-preview)
-- Phase: STAGE-03-CROPPED-MAP-OVERLAY | Phase Status: ACCEPTANCE_FIX
-- Branch: feature/03-cropped-map-overlay
-- Worktree: D:\AIProjects\anhei4-map-worktrees\stage-03-cropped-map-overlay
-- Last Tests: 160/160 PASS
+- Stage 03: FROZEN (v0.3.0-map-overlay-preview)
+- Phase: STAGE-04-MAP-VIEWPORT-REDESIGN | Status: PLANNING
+- Branch: feature/04-map-viewport-redesign
+- Worktree: D:\AIProjects\anhei4-map-worktrees\stage-04-map-viewport-redesign
+- Base: de1bb3a1971c9f4a2fe9f1075d432bbe603c818b
 
-## Stage 03 Tasks
+## Stage 04 Tasks — Planned
 
 | # | Component | Type | Status |
 |---|-----------|------|--------|
-| STAGE-03-TASK-01 | RendererWindow + DOM Query | IMPLEMENTATION | DONE |
-| STAGE-03-TASK-02 | Screenshot Crop + OverlayWindow | IMPLEMENTATION | ACCEPTANCE_FIX_REQUIRED |
-| ACCEPTANCE-FIX-01 | Centered Square Crop | FIX | DONE (875f659) |
-| STAGE-03-ACCEPTANCE-FIX-02 | Map Visual Readiness Check | FIX | DONE (fe3d7f4) |
-| STAGE-03-ACCEPTANCE-FIX-03 | Full Map + Proportional Overlay | FIX | **READY** |
-| STAGE-03-TASK-03 | 3s Refresh Guard + Integration | INTEGRATION | PENDING |
+| STAGE-04-TASK-01 | DOM/Capture Diagnostics | IMPLEMENTATION | PENDING |
+| STAGE-04-TASK-02 | Strategy Selection | ANALYSIS | PENDING |
+| STAGE-04-TASK-03 | Viewport Correction | IMPLEMENTATION | PENDING |
+| STAGE-04-TASK-04 | Integration & Acceptance | INTEGRATION | PENDING |
 
 ## Current
 
-- Current Task: STAGE-03-ACCEPTANCE-FIX-03 | Type: FIX | Status: READY
-- Next Executor: Cursor
+- Current Task: None (PLANNING_COMPLETE)
+- Next Executor: User / Claude
+- Cursor: NOT STARTED
 - NOT merged to main
