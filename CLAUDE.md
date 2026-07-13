@@ -114,6 +114,10 @@ Cursor 在 current-task.md 中找不到以上任一字段时必须停止，等�
 
 CLAUDE.md → AGENTS.md → docs/design → 当前计划 → current-task → Git → 聊天内容。
 
+## 项目开发总规则
+
+**所有 Agent 必须遵守** `docs/governance/project-development-rules.md` 中的最小实现与禁止过度开发原则。任何任务派发、代码实现和审核必须通过该规则的门禁检查。
+
 ## Gstack 技能
 
 Gstack 已安装于 `~/.claude/skills/gstack`（v1.60.1.0）。
