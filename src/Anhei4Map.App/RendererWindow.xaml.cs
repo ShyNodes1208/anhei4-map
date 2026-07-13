@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows;
+using System.Windows.Media.Imaging;
 using Anhei4Map.Core.Models;
 using Anhei4Map.Core.Services;
 using Microsoft.Web.WebView2.Core;
@@ -39,6 +40,8 @@ public partial class RendererWindow : Window
     private bool _webViewInitialized;
     private bool _navigationCompletedSuccessfully;
     private bool _isClosed;
+
+    public event EventHandler? NavigationReady;
 
     public RendererWindow()
     {
@@ -168,6 +171,22 @@ public partial class RendererWindow : Window
         if (e.IsSuccess)
         {
             _navigationCompletedSuccessfully = true;
+
+            if (!_isClosed)
+            {
+                RaiseNavigationReady();
+            }
+        }
+    }
+
+    private void RaiseNavigationReady()
+    {
+        try
+        {
+            NavigationReady?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
         }
     }
 
@@ -223,6 +242,118 @@ public partial class RendererWindow : Window
             return null;
         }
     }
+
+    public async Task<BitmapSource?> CaptureAndCropMapAsync()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            return await await Dispatcher.InvokeAsync(CaptureAndCropMapCoreAsync);
+        }
+
+        return await CaptureAndCropMapCoreAsync();
+    }
+
+    private async Task<BitmapSource?> CaptureAndCropMapCoreAsync()
+    {
+        try
+        {
+            if (!_webViewInitialized ||
+                !_navigationCompletedSuccessfully ||
+                _isClosed ||
+                webView.CoreWebView2 == null ||
+                webView.ActualWidth <= 0 ||
+                webView.ActualHeight <= 0)
+            {
+                return null;
+            }
+
+            var region = await TryGetMapRegionAsync();
+            if (region == null)
+            {
+                return null;
+            }
+
+            using var stream = new MemoryStream();
+            try
+            {
+                await webView.CoreWebView2.CapturePreviewAsync(
+                    CoreWebView2CapturePreviewImageFormat.Png,
+                    stream);
+            }
+            catch
+            {
+                return null;
+            }
+
+            stream.Position = 0;
+
+            BitmapDecoder decoder;
+            try
+            {
+                decoder = BitmapDecoder.Create(
+                    stream,
+                    BitmapCreateOptions.PreservePixelFormat,
+                    BitmapCacheOption.OnLoad);
+            }
+            catch
+            {
+                return null;
+            }
+
+            if (decoder.Frames.Count == 0)
+            {
+                return null;
+            }
+
+            var bitmap = decoder.Frames[0];
+            var scaleX = bitmap.PixelWidth / webView.ActualWidth;
+            var scaleY = bitmap.PixelHeight / webView.ActualHeight;
+
+            if (!IsFinite(scaleX) || !IsFinite(scaleY))
+            {
+                return null;
+            }
+
+            var left = (int)Math.Floor(region.Left * scaleX);
+            var top = (int)Math.Floor(region.Top * scaleY);
+            var right = (int)Math.Ceiling((region.Left + region.Width) * scaleX);
+            var bottom = (int)Math.Ceiling((region.Top + region.Height) * scaleY);
+
+            left = Clamp(left, 0, bitmap.PixelWidth);
+            top = Clamp(top, 0, bitmap.PixelHeight);
+            right = Clamp(right, 0, bitmap.PixelWidth);
+            bottom = Clamp(bottom, 0, bitmap.PixelHeight);
+
+            var cropWidth = right - left;
+            var cropHeight = bottom - top;
+
+            if (cropWidth <= 0 ||
+                cropHeight <= 0 ||
+                left >= bitmap.PixelWidth ||
+                top >= bitmap.PixelHeight)
+            {
+                return null;
+            }
+
+            try
+            {
+                var cropped = new CroppedBitmap(bitmap, new Int32Rect(left, top, cropWidth, cropHeight));
+                cropped.Freeze();
+                return cropped;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static int Clamp(int value, int min, int max) =>
+        Math.Max(min, Math.Min(value, max));
 
     private static bool IsValidRegion(MapRegion region)
     {

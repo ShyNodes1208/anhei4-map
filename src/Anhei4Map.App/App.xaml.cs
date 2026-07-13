@@ -12,6 +12,8 @@ public partial class App : Application
 {
     private static Mutex? _mutex;
     private RendererWindow? _rendererWindow;
+    private OverlayWindow? _overlayWindow;
+    private int _initialCaptureStarted;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -67,9 +69,49 @@ public partial class App : Application
         }
 
         _rendererWindow = new RendererWindow();
+        _overlayWindow = new OverlayWindow();
+        _rendererWindow.NavigationReady += OnRendererNavigationReady;
         _rendererWindow.Show();
 
         base.OnStartup(e);
+    }
+
+    private void OnRendererNavigationReady(object? sender, EventArgs e)
+    {
+        if (Interlocked.Exchange(ref _initialCaptureStarted, 1) != 0)
+        {
+            return;
+        }
+
+        _ = StartInitialCaptureAsync();
+    }
+
+    private async Task StartInitialCaptureAsync()
+    {
+        const int maxAttempts = 10;
+        const int delayMs = 500;
+
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            if (attempt > 0)
+            {
+                await Task.Delay(delayMs);
+            }
+
+            var bitmap = await _rendererWindow!.CaptureAndCropMapAsync();
+            if (bitmap == null)
+            {
+                continue;
+            }
+
+            _overlayWindow!.UpdateMapImage(bitmap);
+            if (!_overlayWindow.IsVisible)
+            {
+                _overlayWindow.Show();
+            }
+
+            return;
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
