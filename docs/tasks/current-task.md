@@ -48,42 +48,65 @@ Cursor
 
 ---
 
-## 规则 2: 初始化生命周期
+## 规则 2: 初始化生命周期与 CTS 安全
+
+### 字段
+
+```csharp
+private CancellationTokenSource? _webViewInitializationCts;
+private bool _webViewInitializationStarted;
+private bool _webViewInitialized;
+private bool _isClosing;
+```
 
 ### 触发时机
 
-`MainWindow.Loaded` 事件——窗口完全加载且 HWND 可用后开始 WebView2 初始化。不在构造函数中启动初始化。
+`MainWindow.Loaded` 事件。不在构造函数中启动。
 
 ### 防重复
 
 ```csharp
-private bool _webViewInitialized;
-
 private async void OnLoaded(object sender, RoutedEventArgs e)
 {
-    if (_webViewInitialized) return;
-    _webViewInitialized = true;
+    if (_webViewInitializationStarted) return;
+    _webViewInitializationStarted = true;
     await InitializeWebViewAsync();
 }
 ```
 
-### 关闭取消
+使用 `_webViewInitializationStarted`（非 `_webViewInitialized`）作为防重复 guard。`_webViewInitialized` 仅在完全成功后设置。
+
+### 关闭取消（防止 ObjectDisposedException）
 
 ```csharp
-private CancellationTokenSource? _initCts;
+private void OnClosing(object? sender, CancelEventArgs e)
+{
+    _isClosing = true;
 
+    // 获取局部引用并清空字段 —— 防止与 finally 块的 Dispose 竞争
+    var cts = Interlocked.Exchange(ref _webViewInitializationCts, null);
+    if (cts != null)
+    {
+        try { cts.Cancel(); }
+        catch (ObjectDisposedException) { /* 已释放，忽略 */ }
+    }
+}
+```
+
+**规则：**
+- 先读字段到局部变量，再清空字段（原子操作 `Interlocked.Exchange`）
+- Cancel 调用用 try/catch 包裹防止 ObjectDisposedException
+- 不在 OnClosing 中 Dispose CTS（由初始化方法 finally 负责）
+
+### 构造函数
+
+```csharp
 public MainWindow()
 {
     InitializeComponent();
     SourceInitialized += OnSourceInitialized;
     Loaded += OnLoaded;
     Closing += OnClosing;
-}
-
-private void OnClosing(object? sender, CancelEventArgs e)
-{
-    _initCts?.Cancel();
-    _initCts?.Dispose();
 }
 ```
 
@@ -93,19 +116,44 @@ private void OnClosing(object? sender, CancelEventArgs e)
 
 ---
 
-## 规则 3: 初始化顺序（冻结）
+## 规则 3: 初始化顺序与 Post-Await 检查
+
+WebView2 的 `CreateAsync` 和 `EnsureCoreWebView2Async` 不完全接受 CancellationToken。在每个 await 之后**主动检查取消状态**。
+
+### 冻结顺序
 
 ```
-1. _initCts = new CancellationTokenSource()
+1. _webViewInitializationCts = new CancellationTokenSource()
 2. Directory.CreateDirectory(userDataFolder)
-3. env = await CoreWebView2Environment.CreateAsync(null, userDataFolder, null, _initCts.Token)
-4. await webView.EnsureCoreWebView2Async(env, _initCts.Token)
-5. ConfigureWebViewSettings()  // 设置 8 项属性
-6. RegisterWebViewEvents()     // 注册 3 类事件
-7. webView.CoreWebView2.Navigate("https://helltides.com/")
+3. env = await CoreWebView2Environment.CreateAsync(null, userDataFolder, null)
+4. _webViewInitializationCts.Token.ThrowIfCancellationRequested()
+5. if (_isClosing) return
+6. await webView.EnsureCoreWebView2Async(env)
+7. _webViewInitializationCts.Token.ThrowIfCancellationRequested()
+8. if (_isClosing) return
+9. ConfigureWebViewSettings()  // 设置 8 项属性
+10. _webViewInitializationCts.Token.ThrowIfCancellationRequested()
+11. if (_isClosing) return
+12. RegisterWebViewEvents()    // 注册 3 类事件
+13. _webViewInitializationCts.Token.ThrowIfCancellationRequested()
+14. if (_isClosing) return
+15. webView.CoreWebView2.Navigate("https://helltides.com/")
+16. _webViewInitialized = true  // ← 仅在完全成功后设置
 ```
 
-任一步失败（异常或取消）→ 跳过所有后续步骤，进入失败处理。
+**Post-await 检查规则：**
+
+| await 点 | 之后检查 |
+|----------|---------|
+| CreateAsync 之后 | ThrowIfCancellationRequested + _isClosing |
+| EnsureCoreWebView2Async 之后 | ThrowIfCancellationRequested + _isClosing |
+| 配置 settings 前 | ThrowIfCancellationRequested + _isClosing |
+| 注册事件前 | ThrowIfCancellationRequested + _isClosing |
+| Navigate 前 | ThrowIfCancellationRequested + _isClosing |
+
+- _isClosing == true → 不继续操作 WebView2 控件
+- ThrowIfCancellationRequested → 抛出 OperationCanceledException
+- 任一步失败 → 跳过所有后续步骤
 
 ---
 
@@ -192,14 +240,16 @@ private void OnDownloadStarting(object? sender, CoreWebView2DownloadStartingEven
 
 ---
 
-## 规则 6: 初始化失败处理（冻结）
+## 规则 6: 初始化失败处理与 CTS 清理
 
 ```csharp
 private async Task InitializeWebViewAsync()
 {
+    CancellationTokenSource? localCts = null;
     try
     {
-        _initCts = new CancellationTokenSource();
+        _webViewInitializationCts = new CancellationTokenSource();
+        localCts = _webViewInitializationCts;
 
         var userDataFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -211,14 +261,25 @@ private async Task InitializeWebViewAsync()
         var env = await CoreWebView2Environment.CreateAsync(
             browserExecutableFolder: null,
             userDataFolder: userDataFolder,
-            options: null).WithCancellation(_initCts.Token);
+            options: null);
+        localCts.Token.ThrowIfCancellationRequested();
+        if (_isClosing) return;
 
-        await webView.EnsureCoreWebView2Async(env).WithCancellation(_initCts.Token);
+        await webView.EnsureCoreWebView2Async(env);
+        localCts.Token.ThrowIfCancellationRequested();
+        if (_isClosing) return;
 
         ConfigureWebViewSettings();
+        localCts.Token.ThrowIfCancellationRequested();
+        if (_isClosing) return;
+
         RegisterWebViewEvents();
+        localCts.Token.ThrowIfCancellationRequested();
+        if (_isClosing) return;
 
         webView.CoreWebView2.Navigate("https://helltides.com/");
+
+        _webViewInitialized = true; // 完全成功
     }
     catch (OperationCanceledException)
     {
@@ -226,12 +287,25 @@ private async Task InitializeWebViewAsync()
     }
     catch (Exception ex)
     {
-        MessageBox.Show(
-            $"WebView2 初始化失败，应用无法继续运行。\n\n错误：{ex.Message}",
-            "初始化失败 — Anhei4Map",
-            MessageBoxButton.OK,
-            MessageBoxImage.Error);
-        Application.Current.Shutdown();
+        // 窗口正在关闭时不显示错误对话框
+        if (!_isClosing)
+        {
+            MessageBox.Show(
+                $"WebView2 初始化失败，应用无法继续运行。\n\n错误：{ex.Message}",
+                "初始化失败 — Anhei4Map",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Application.Current.Shutdown();
+        }
+    }
+    finally
+    {
+        // 仅当字段仍引用当前 CTS 时才清空和释放
+        if (localCts != null &&
+            Interlocked.CompareExchange(ref _webViewInitializationCts, null, localCts) == localCts)
+        {
+            localCts.Dispose();
+        }
     }
 }
 ```
@@ -240,32 +314,40 @@ private async Task InitializeWebViewAsync()
 
 | 异常 | 行为 |
 |------|------|
-| OperationCanceledException | 静默停止——窗口已关闭 |
-| 其他任何 Exception | MessageBox + Shutdown |
+| OperationCanceledException | 静默停止（窗口已关闭） |
+| _isClosing == true 时的任何异常 | 静默停止（不再显示 MessageBox） |
+| 其他 Exception + _isClosing == false | MessageBox + Application.Current.Shutdown() |
+| 失败后 _webViewInitialized | 保持 false |
 | 不记录日志 | 推迟到 Stage 03 |
-| Navigate 调用后导航失败 | 由 NavigationCompleted IsSuccess==false 处理——Stage 03 处理重试 |
+| Navigate 调用后导航失败 | NavigationCompleted IsSuccess==false，Stage 03 处理 |
 
-### WithCancellation 扩展
+### finally 块规则
 
-如果 `WithCancellation` 不可用，使用 `Task.WhenAny`：
+- `localCts` 保存 try 开始时设置的 `_webViewInitializationCts` 引用
+- `Interlocked.CompareExchange` 原子比较并交换——只有当字段仍然指向同一个 CTS 时才置空
+- 如果 OnClosing 已经先执行了 `Interlocked.Exchange(ref _webViewInitializationCts, null)`，CompareExchange 会检测到字段已变为 null 并跳过 Dispose
+- 只有 try 块拥有 CTS 所有权时才 Dispose
+- Dispose 后无字段引用已释放对象
+- OnClosing 再次执行时不会访问已 Dispose 的 CTS（字段已为 null）
 
-```csharp
-var task = CoreWebView2Environment.CreateAsync(...);
-var completed = await Task.WhenAny(task, Task.Delay(-1, _initCts.Token));
-if (completed != task)
-    throw new OperationCanceledException(_initCts.Token);
-var env = await task;
-```
+### 事件注销
+
+设计不要求手动注销 WebView2 事件。WebView2 控件随 WPF 窗口释放时自动清理。不引入 Stage 03 生命周期框架。
 
 ---
 
-## 规则 7: Task 完成后的生命周期
+## 规则 7: 初始化完成后的生命周期
 
-初始化成功后：
-- 事件保持注册直到窗口关闭
-- WebView2 控件由 WPF 自动回收
-- `_initCts` 不再需要（可在初始化完成后 Dispose）
-- 不保存 CancellationTokenSource 到后续事件中使用
+初始化成功后（`_webViewInitialized == true`）：
+- 事件保持注册直到窗口关闭（WPF 自动回收）
+- `_webViewInitializationCts` 已由 finally 块 Dispose 并置空
+- 后续 NavigationStarting/NewWindowRequested/DownloadStarting 事件不依赖 CTS
+- `_isClosing` 和 `_webViewInitialized` 为只读判断标志
+
+初始化失败后（`_webViewInitialized == false`）：
+- 同上，CTS 已清理
+- 窗口可能仍可见（含空 WebView2 控件），或已 Shutdown
+- 不尝试重新初始化
 
 ---
 
