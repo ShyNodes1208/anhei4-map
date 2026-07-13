@@ -19,7 +19,7 @@ Captured map region ~3.17:1 ratio, vertical content cut off.
 - Privacy: no cookies, localStorage, sessionStorage, headers, auth, credentials
 - Full-page screenshots may capture visible page state (documented in release notes)
 
-## Candidate Schema (33 fields per element)
+## Candidate Schema
 selector, selectorMatchIndex, tagName, id, className, parentTagName, parentId, parentClassName, boundedDomPath, boundedAncestorChain, left, top, right, bottom, width, height, clientWidth, clientHeight, offsetWidth, offsetHeight, scrollWidth, scrollHeight, display, visibility, opacity, position, overflow, overflowX, overflowY, zIndex, transform, transformOrigin, zoom, childCount, area, rank, selected, selectionReason
 - Types: double or explicit int; unavailable = null; no empty-string masking
 - Cap: 100 candidates, 12 ancestor levels, no full DOM export
@@ -54,10 +54,11 @@ DOM modification, resize, scroll, page zoom, map interaction, window size experi
 Plan Review -> Per-Task (TASK-01/03/04) -> TASK-02 Strategy -> Stage Final. Codex APPROVE required at each gate.
 
 ## Task Sequence
-- TASK-01: Map DOM and Capture Diagnostics (DIAGNOSTIC_IMPLEMENTATION)
+- TASK-01A: CLI toggle + page/DOM/WPF metrics + JSON diagnostics (DIAGNOSTIC_IMPLEMENTATION)
+- TASK-01B: Capture artifacts + annotated bitmap + retention/failure handling (DIAGNOSTIC_IMPLEMENTATION)
 - TASK-02: Diagnostic Evidence Analysis and Strategy Selection (DOCS_ANALYSIS)
-- TASK-03: Viewport/Map-Region Correction (IMPLEMENTATION)
-- TASK-04: Integration and Manual Acceptance (INTEGRATION_ACCEPTANCE)
+- TASK-03: Approved Viewport Correction Implementation (IMPLEMENTATION)
+- TASK-04: Integration, Regression, Manual Acceptance and Final Review (INTEGRATION_ACCEPTANCE)
 
 ## Windows-Only Verification
 All: Windows 10/11, PowerShell, .NET/WPF/WebView2. No Linux/WSL. Per task: restore + build 0e0w + all tests pass + git diff --check clean + manual smoke test.
