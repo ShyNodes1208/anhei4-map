@@ -7,7 +7,7 @@
         ShowInTaskbar="False"
         Topmost="False"
         Width="1280"
-        Height="800"
+        Height="720"
         Background="White">
     <Grid>
         <wpf:WebView2 x:Name="webView" />

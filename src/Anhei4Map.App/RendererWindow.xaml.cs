@@ -1,7 +1,6 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using Anhei4Map.Core.Models;
@@ -41,8 +40,6 @@ public partial class RendererWindow : Window
     private bool _webViewInitialized;
     private bool _navigationCompletedSuccessfully;
     private bool _isClosed;
-    private bool _navigationReadyRaised;
-    private int _navigationGeneration;
 
     public event EventHandler? NavigationReady;
 
@@ -155,9 +152,7 @@ public partial class RendererWindow : Window
 
     private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
-        Interlocked.Increment(ref _navigationGeneration);
         _navigationCompletedSuccessfully = false;
-        _navigationReadyRaised = false;
 
         if (string.IsNullOrEmpty(e.Uri))
         {
@@ -173,196 +168,14 @@ public partial class RendererWindow : Window
 
     private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
-        if (!e.IsSuccess)
+        if (e.IsSuccess)
         {
-            return;
-        }
+            _navigationCompletedSuccessfully = true;
 
-        _navigationCompletedSuccessfully = true;
-
-        if (_isClosed)
-        {
-            return;
-        }
-
-        _ = OnNavigationCompletedSuccessAsync();
-    }
-
-    private async Task OnNavigationCompletedSuccessAsync()
-    {
-        var generation = _navigationGeneration;
-
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            if (_isClosed || generation != _navigationGeneration)
+            if (!_isClosed)
             {
-                return;
+                RaiseNavigationReady();
             }
-
-            try
-            {
-                if (await PrepareMapViewportAsync())
-                {
-                    break;
-                }
-            }
-            catch
-            {
-            }
-
-            if (attempt < 2)
-            {
-                await Task.Delay(500);
-
-                if (_isClosed || generation != _navigationGeneration)
-                {
-                    return;
-                }
-            }
-        }
-
-        if (generation != _navigationGeneration ||
-            _isClosed ||
-            !_navigationCompletedSuccessfully ||
-            webView.CoreWebView2 == null ||
-            _navigationReadyRaised)
-        {
-            return;
-        }
-
-        _navigationReadyRaised = true;
-        RaiseNavigationReady();
-    }
-
-    private async Task<bool> PrepareMapViewportAsync()
-    {
-        if (!Dispatcher.CheckAccess())
-        {
-            return await await Dispatcher.InvokeAsync(PrepareMapViewportCoreAsync);
-        }
-
-        return await PrepareMapViewportCoreAsync();
-    }
-
-    private async Task<bool> PrepareMapViewportCoreAsync()
-    {
-        if (!_webViewInitialized ||
-            !_navigationCompletedSuccessfully ||
-            _isClosed ||
-            webView.CoreWebView2 == null)
-        {
-            return false;
-        }
-
-        const string layoutScript = """
-            (async function() {
-              const selectors = ['#map', '.leaflet-container', '[class*="map"]'];
-
-              function isVisible(el) {
-                const style = getComputedStyle(el);
-                if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) <= 0) return false;
-                const r = el.getBoundingClientRect();
-                return r.width > 0 && r.height > 0;
-              }
-
-              function findBestContainer() {
-                let best = null, bestArea = 0;
-                for (const sel of selectors) {
-                  const el = document.querySelector(sel);
-                  if (!el || !isVisible(el)) continue;
-                  const r = el.getBoundingClientRect();
-                  const area = r.width * r.height;
-                  if (area > bestArea) { best = el; bestArea = area; }
-                }
-                return best;
-              }
-
-              const best = findBestContainer();
-              if (!best) return false;
-
-              document.documentElement.style.margin = '0';
-              document.documentElement.style.padding = '0';
-              document.documentElement.style.overflow = 'hidden';
-              document.body.style.margin = '0';
-              document.body.style.padding = '0';
-              document.body.style.overflow = 'hidden';
-
-              best.style.position = 'fixed';
-              best.style.left = '0';
-              best.style.top = '0';
-              best.style.width = '100vw';
-              best.style.height = '100vh';
-              best.style.maxWidth = 'none';
-              best.style.maxHeight = 'none';
-              best.style.margin = '0';
-              best.style.padding = '0';
-              best.style.zIndex = '2147483647';
-
-              await new Promise(resolve =>
-                requestAnimationFrame(() =>
-                  requestAnimationFrame(resolve)));
-
-              window.dispatchEvent(new Event('resize'));
-
-              return true;
-            })()
-            """;
-
-        try
-        {
-            var layoutResult = await webView.CoreWebView2.ExecuteScriptAsync(layoutScript);
-            if (!string.Equals(layoutResult, "true", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            await Task.Delay(1500);
-
-            if (!_webViewInitialized ||
-                !_navigationCompletedSuccessfully ||
-                _isClosed ||
-                webView.CoreWebView2 == null)
-            {
-                return false;
-            }
-
-            const string verifyScript = """
-                (function() {
-                  const selectors = ['#map', '.leaflet-container', '[class*="map"]'];
-                  let best = null, bestArea = 0;
-
-                  function isVisible(el) {
-                    const style = getComputedStyle(el);
-                    if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) <= 0) return false;
-                    const r = el.getBoundingClientRect();
-                    return r.width > 0 && r.height > 0;
-                  }
-
-                  for (const sel of selectors) {
-                    const el = document.querySelector(sel);
-                    if (!el || !isVisible(el)) continue;
-                    const r = el.getBoundingClientRect();
-                    const area = r.width * r.height;
-                    if (area > bestArea) { best = el; bestArea = area; }
-                  }
-                  if (!best) return false;
-
-                  const rect = best.getBoundingClientRect();
-                  const iw = window.innerWidth;
-                  const ih = window.innerHeight;
-                  if (rect.width <= 0 || rect.height <= 0) return false;
-                  if (rect.width < iw * 0.9) return false;
-                  if (rect.height < ih * 0.9) return false;
-                  return true;
-                })()
-                """;
-
-            var verifyResult = await webView.CoreWebView2.ExecuteScriptAsync(verifyScript);
-            return string.Equals(verifyResult, "true", StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
         }
     }
 
