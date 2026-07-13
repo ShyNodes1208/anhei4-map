@@ -1,59 +1,63 @@
-# Stage 04: Map Viewport Redesign
+﻿# Stage 04: Map Viewport Redesign
 
 ## Stage Info
-- Stage: STAGE-04
-- Name: Map Viewport Redesign
-- Slug: map-viewport-redesign
-- Branch: feature/04-map-viewport-redesign
-- Base: de1bb3a1971c9f4a2fe9f1075d432bbe603c818b (v0.3.0-map-overlay-preview)
+- Stage: STAGE-04 | Name: Map Viewport Redesign
+- Slug: map-viewport-redesign | Branch: feature/04-map-viewport-redesign
+- Base: de1bb3a1971c9f4a2fe9f1075d432bbe603c818b (v0.3.0)
 
 ## Known Limitation
-Current captured map region has ~3.17:1 aspect ratio, cutting off most vertical content. Overlay displays only ~400×126 meaningful pixels.
+Captured map region ~3.17:1 ratio, vertical content cut off.
 
-## Diagnostic Strategy
-Before changing any layout behavior, TASK-01 will instrument the DOM query and capture pipeline with detailed diagnostics. All candidate elements, WebView2 metrics, and selection decisions are logged to disk for analysis.
+## Diagnostic Toggle
+`--diagnose-map-viewport` CLI argument. Default off. One-shot per process. No persistence.
 
-## Prohibited Approaches (from FIX-04/FIX-05 failure)
-- Force position=fixed / width=100vw / height=100vh
-- Modify html/body overflow
-- L.map.invalidateSize() or Leaflet internals
-- Guess site JavaScript objects
-- Only increase RendererWindow height
-- Stretch=Fill / UniformToFill
-- Secondary square crop
+## Diagnostic Output
+`%LocalAppData%\Anhei4Map\diagnostics\<yyyyMMdd-HHmmss-fff-<random6>>\`
+- manifest.json, page.json, candidates.json, layers.json
+- capture-full.png, capture-annotated.png, capture-crop.png
+- Retention: max 5 runs, 50MB/run, 250MB total
+- Privacy: no cookies, localStorage, sessionStorage, headers, auth, credentials
+- Full-page screenshots may capture visible page state (documented in release notes)
 
-## Candidate Solutions (to be evaluated from diagnostics)
-- Correct DOM selector to the true map root container
-- Adjust WebView2 page zoom or responsive breakpoint
-- Trigger site's built-in fullscreen map mode
-- Adjust RendererWindow viewport dimensions
-- Scroll-stitch captures only if diagnostics prove map exceeds viewport
-- Use public data API to render map (last resort)
+## Candidate Schema (33 fields per element)
+selector, selectorMatchIndex, tagName, id, className, parentTagName, parentId, parentClassName, boundedDomPath, boundedAncestorChain, left, top, right, bottom, width, height, clientWidth, clientHeight, offsetWidth, offsetHeight, scrollWidth, scrollHeight, display, visibility, opacity, position, overflow, overflowX, overflowY, zIndex, transform, transformOrigin, zoom, childCount, area, rank, selected, selectionReason
+- Types: double or explicit int; unavailable = null; no empty-string masking
+- Cap: 100 candidates, 12 ancestor levels, no full DOM export
 
-## Task Sequence
-- TASK-01: Map DOM and capture diagnostics
-- TASK-02: Select redesign strategy from evidence
-- TASK-03: Implement viewport/map-region correction
-- TASK-04: Integration and manual acceptance
+## Layer Summary
+Per selected candidate and limited ancestors/children: map root, viewport, parent layout, pane, tile layer, marker layer, control layer, canvas, SVG, image tile
+- Canvas: CSS size, backing-store size, bounding rect
+- SVG: viewBox, bounding rect, child count
+- Tile: total/loaded count, naturalWidth/Height, displayed size, className, nearest pane
+- Marker/control: count, pane/layer name, z-index
+- Caps on child summary depth/width; no full DOM traversal
 
-## Scope
-- Diagnostic instrumentation
-- Data-driven selector/viewport correction
-- Verified to produce approximately 1.6:1 capture ratio
+## Page Metrics
+url, title, document.readyState, window.innerWidth/Height, window.outerWidth/Height, visualViewport.width/height/scale, devicePixelRatio, documentElement.clientWidth/Height/scrollWidth/ScrollHeight, body.clientWidth/Height/scrollWidth/ScrollHeight, viewport meta content, page zoom, media query results: max-width:768px, max-width:1024px, max-width:1280px, min-width:1281px
 
-## Non-Goals
-- Periodic refresh, mouse passthrough, hotkeys, character sync, game memory access
+## WPF/WebView2/Bitmap Metrics (all with explicit unit labels)
+- WPF DIP: RendererWindow Width/Height/ActualWidth/ActualHeight, WebView2 ActualWidth/ActualHeight
+- DPI: VisualTreeHelper.GetDpi scale values, PresentationSource transforms
+- WebView2: CoreWebView2.ZoomFactor, RasterizationScale (null if unavailable)
+- Bitmap px: CapturePreview PixelWidth/Height, scaleX/Y, MapRegion CSS px, pre-floor float crop bounds, clamped Int32Rect, cropped PixelWidth/Height, final ratio
+- Each field tagged with unit: CSS px | WPF DIP | bitmap px | dimensionless
+
+## TASK-01 Absolute Prohibitions
+DOM modification, resize, scroll, page zoom, map interaction, window size experiments. Pure observation only.
+
+## Prohibited Approaches (3 Tiers)
+- Tier A (TASK-01 absolute): DOM modify, resize, scroll, zoom, map interact, window resize
+- Tier B (default-rejected; reassessable with evidence + Codex + user approval in TASK-03): RendererWindow resize, site fullscreen mode, ZoomFactor adjust, DOM selector fix
+- Tier C (permanent): Leaflet internals, JS object guessing, process injection, game memory, API redraw, Stretch=Fill, bitmap non-proportional stretch
 
 ## Codex Review Gates
+Plan Review -> Per-Task (TASK-01/03/04) -> TASK-02 Strategy -> Stage Final. Codex APPROVE required at each gate.
 
-### Planning Gate
-Claude plan → Codex read-only review → Claude adjudication → User approval → TASK-01 dispatch.
+## Task Sequence
+- TASK-01: Map DOM and Capture Diagnostics (DIAGNOSTIC_IMPLEMENTATION)
+- TASK-02: Diagnostic Evidence Analysis and Strategy Selection (DOCS_ANALYSIS)
+- TASK-03: Viewport/Map-Region Correction (IMPLEMENTATION)
+- TASK-04: Integration and Manual Acceptance (INTEGRATION_ACCEPTANCE)
 
-### Per-Task Gate (TASK-01, TASK-03, TASK-04)
-Cursor commit → Claude scope/build/test check → Codex independent diff review → Claude adjudication → Cursor fix (if needed) → Codex re-review → Claude marks DONE.
-
-### TASK-02 Special Gate
-TASK-01 diagnostics complete → Claude summarizes evidence → Codex reviews conclusions → Claude adjudicates and selects strategy → User approves strategy → TASK-03 dispatch.
-
-### Stage Final Gate
-TASK-04 acceptance → Codex Stage Final Review (all diffs, tests, diagnostics disabled, risks) → Codex APPROVE required before merge or version freeze.
+## Windows-Only Verification
+All: Windows 10/11, PowerShell, .NET/WPF/WebView2. No Linux/WSL. Per task: restore + build 0e0w + all tests pass + git diff --check clean + manual smoke test.
