@@ -40,6 +40,7 @@ public partial class RendererWindow : Window
     private bool _webViewInitialized;
     private bool _navigationCompletedSuccessfully;
     private bool _isClosed;
+    private bool _navigationReadyRaised;
 
     public event EventHandler? NavigationReady;
 
@@ -153,6 +154,7 @@ public partial class RendererWindow : Window
     private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
         _navigationCompletedSuccessfully = false;
+        _navigationReadyRaised = false;
 
         if (string.IsNullOrEmpty(e.Uri))
         {
@@ -168,19 +170,173 @@ public partial class RendererWindow : Window
 
     private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
-        if (e.IsSuccess)
+        if (!e.IsSuccess)
         {
-            _navigationCompletedSuccessfully = true;
+            return;
+        }
 
-            if (!_isClosed)
+        _navigationCompletedSuccessfully = true;
+
+        if (_isClosed)
+        {
+            return;
+        }
+
+        _ = OnNavigationCompletedSuccessAsync();
+    }
+
+    private async Task OnNavigationCompletedSuccessAsync()
+    {
+        var ready = await PrepareMapViewportAsync();
+        if (!ready || _isClosed)
+        {
+            return;
+        }
+
+        RaiseNavigationReady();
+    }
+
+    private async Task<bool> PrepareMapViewportAsync()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            return await await Dispatcher.InvokeAsync(PrepareMapViewportCoreAsync);
+        }
+
+        return await PrepareMapViewportCoreAsync();
+    }
+
+    private async Task<bool> PrepareMapViewportCoreAsync()
+    {
+        if (!_webViewInitialized ||
+            !_navigationCompletedSuccessfully ||
+            _isClosed ||
+            webView.CoreWebView2 == null)
+        {
+            return false;
+        }
+
+        const string layoutScript = """
+            (async function() {
+              const selectors = ['#map', '.leaflet-container', '[class*="map"]'];
+
+              function isVisible(el) {
+                const style = getComputedStyle(el);
+                if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) <= 0) return false;
+                const r = el.getBoundingClientRect();
+                return r.width > 0 && r.height > 0;
+              }
+
+              function findBestContainer() {
+                let best = null, bestArea = 0;
+                for (const sel of selectors) {
+                  const el = document.querySelector(sel);
+                  if (!el || !isVisible(el)) continue;
+                  const r = el.getBoundingClientRect();
+                  const area = r.width * r.height;
+                  if (area > bestArea) { best = el; bestArea = area; }
+                }
+                return best;
+              }
+
+              const best = findBestContainer();
+              if (!best) return false;
+
+              document.documentElement.style.margin = '0';
+              document.documentElement.style.padding = '0';
+              document.documentElement.style.overflow = 'hidden';
+              document.body.style.margin = '0';
+              document.body.style.padding = '0';
+              document.body.style.overflow = 'hidden';
+
+              best.style.position = 'fixed';
+              best.style.left = '0';
+              best.style.top = '0';
+              best.style.width = '100vw';
+              best.style.height = '100vh';
+              best.style.maxWidth = 'none';
+              best.style.maxHeight = 'none';
+              best.style.margin = '0';
+              best.style.padding = '0';
+              best.style.zIndex = '2147483647';
+
+              await new Promise(resolve =>
+                requestAnimationFrame(() =>
+                  requestAnimationFrame(resolve)));
+
+              window.dispatchEvent(new Event('resize'));
+
+              return true;
+            })()
+            """;
+
+        try
+        {
+            var layoutResult = await webView.CoreWebView2.ExecuteScriptAsync(layoutScript);
+            if (!string.Equals(layoutResult, "true", StringComparison.OrdinalIgnoreCase))
             {
-                RaiseNavigationReady();
+                return false;
             }
+
+            await Task.Delay(1500);
+
+            if (!_webViewInitialized ||
+                !_navigationCompletedSuccessfully ||
+                _isClosed ||
+                webView.CoreWebView2 == null)
+            {
+                return false;
+            }
+
+            const string verifyScript = """
+                (function() {
+                  const selectors = ['#map', '.leaflet-container', '[class*="map"]'];
+                  let best = null, bestArea = 0;
+
+                  function isVisible(el) {
+                    const style = getComputedStyle(el);
+                    if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) <= 0) return false;
+                    const r = el.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0;
+                  }
+
+                  for (const sel of selectors) {
+                    const el = document.querySelector(sel);
+                    if (!el || !isVisible(el)) continue;
+                    const r = el.getBoundingClientRect();
+                    const area = r.width * r.height;
+                    if (area > bestArea) { best = el; bestArea = area; }
+                  }
+                  if (!best) return false;
+
+                  const rect = best.getBoundingClientRect();
+                  const iw = window.innerWidth;
+                  const ih = window.innerHeight;
+                  if (rect.width <= 0 || rect.height <= 0) return false;
+                  if (rect.width < iw * 0.9) return false;
+                  if (rect.height < ih * 0.9) return false;
+                  return true;
+                })()
+                """;
+
+            var verifyResult = await webView.CoreWebView2.ExecuteScriptAsync(verifyScript);
+            return string.Equals(verifyResult, "true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
         }
     }
 
     private void RaiseNavigationReady()
     {
+        if (_navigationReadyRaised)
+        {
+            return;
+        }
+
+        _navigationReadyRaised = true;
+
         try
         {
             NavigationReady?.Invoke(this, EventArgs.Empty);
