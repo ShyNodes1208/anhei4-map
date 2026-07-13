@@ -4,19 +4,19 @@
 STAGE-03-CROPPED-MAP-OVERLAY
 
 ## 任务编号
-STAGE-03-ACCEPTANCE-FIX-05
+STAGE-03-ACCEPTANCE-ROLLBACK-01
 
 ## 类型
-FIX
+ROLLBACK
 
 ## 状态
 READY
 
 ## 组件
-视口准备降级 + 导航代次防护
+回滚 RendererWindow 到 FIX-03 可运行状态
 
-## 父任务
-ACCEPTANCE-FIX-04 (d4bdeba — 90% 验证阻断 NavigationReady 导致 Overlay 不显示)
+## 原因
+FIX-04 (d4bdeba) 和 FIX-05 (49c8d08) 的视口准备逻辑导致 OverlayWindow 不再显示
 
 ## 下一执行者
 Cursor
@@ -25,128 +25,101 @@ Cursor
 
 ## 允许修改的精确路径
 
+- `src/Anhei4Map.App/RendererWindow.xaml`
 - `src/Anhei4Map.App/RendererWindow.xaml.cs`
 
 ## 禁止修改范围
 
-- RendererWindow.xaml
-- OverlayWindow.xaml / OverlayWindow.xaml.cs
-- App.xaml.cs
+- `App.xaml.cs`
+- `OverlayWindow.xaml` / `OverlayWindow.xaml.cs`
 - `src/Anhei4Map.Core/**`、`src/Anhei4Map.Infrastructure/**`
 - `tests/**`、`docs/design/**`、`*.csproj`
-- 不修改截图/裁剪/Overlay 逻辑
-- 不实现定时刷新、穿透、热键
 
 ---
 
-## 步 1：导航代次字段
+## 回滚目标
 
-```csharp
-private int _navigationGeneration;
-private bool _navigationReadyRaised;
+将两个文件恢复到提交 `90071dfd8647d4599333c0c54bdcb7e0062f8d5d` 中的版本。
+
+核对方式：
+```powershell
+git diff 90071dfd8647d4599333c0c54bdcb7e0062f8d5d -- src/Anhei4Map.App/RendererWindow.xaml src/Anhei4Map.App/RendererWindow.xaml.cs
 ```
 
----
-
-## 步 2：NavigationStarting
-
-```csharp
-private void OnNavigationStarting(...)
-{
-    Interlocked.Increment(ref _navigationGeneration);
-    _navigationCompletedSuccessfully = false;
-    _navigationReadyRaised = false;
-    // ... 现有 DomainPolicy 检查不变
-}
-```
+回滚完成后上述 diff 无输出。
 
 ---
 
-## 步 3：NavigationCompleted
+## 移除内容
 
-```csharp
-private async void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
-{
-    if (!e.IsSuccess) return;
-    _navigationCompletedSuccessfully = true;
-
-    var generation = _navigationGeneration;
-
-    // 尝试视口准备——最多 3 次，500ms 间隔
-    for (var attempt = 0; attempt < 3; attempt++)
-    {
-        if (_isClosed || generation != _navigationGeneration) return;
-        if (await PrepareMapViewportAsync()) break;
-        if (attempt < 2) await Task.Delay(500);
-    }
-
-    // 无论视口准备成功与否，只要仍是同一次导航且未关闭且未触发过
-    if (!_isClosed && generation == _navigationGeneration && !_navigationReadyRaised)
-    {
-        _navigationReadyRaised = true;
-        if (!_isClosed) RaiseNavigationReady();
-    }
-}
-```
+FIX-04 和 FIX-05 引入的所有变更必须移除：
+- RendererWindow Height=800
+- PrepareMapViewportAsync 方法
+- 地图容器强制 `position=fixed; width=100vw; height=100vh`
+- html/body 样式修改（margin/padding/overflow）
+- 双 requestAnimationFrame
+- window resize 事件
+- 90% 视口验证
+- `_navigationGeneration` 字段
+- 导航代次检查
+- 3 次视口准备重试
+- 视口准备失败回退逻辑
 
 ---
 
-## 步 4：规则冻结
+## 保留内容
 
-| 规则 | 值 |
-|------|-----|
-| PrepareMapViewportAsync 最大尝试 | 3 次 |
-| 间隔 | 500ms |
-| 成功 | 立即停止重试 |
-| 全部失败 | 不影响 NavigationReady 触发 |
-| 导航代次变化 | 旧流程立即停止，不触发 NavigationReady |
-| NavigationReady 触发条件 | `!_isClosed && generation==_navigationGeneration && !_navigationReadyRaised` |
-| 防重复 | `_navigationReadyRaised` 保证同次导航只触发一次 |
-| 旧流程防护 | 每次 await 后检查 `generation == _navigationGeneration` |
-
----
-
-## 保留
-
-- RendererWindow 1280×800
-- PrepareMapViewportAsync 全部 CSS 注入 + requestAnimationFrame + resize + 90% 验证
+90071df 中已存在的功能必须保留：
+- 地图视觉就绪检查 (IsMapVisualReadyAsync)
 - 3000ms 预热 + 10 次截图重试
-- 地图视觉就绪检查
-- DOM 裁剪 + 完整截图
-- Overlay 最大 400×250 + 按比例缩放
-- 截图成功后才 Show Overlay
+- CapturePreviewAsync + PNG
+- DOM 地图区域裁剪 + scaleX/scaleY
+- 完整地图返回（无正方形二次裁剪）
+- BitmapDecoder OnLoad + Freeze
+- Overlay 动态比例 (max 400×250)
+- 所有现有事件和导航白名单
 
 ---
 
 ## 验证命令
 
 ```powershell
+git diff 90071dfd8647d4599333c0c54bdcb7e0062f8d5d -- src/Anhei4Map.App/RendererWindow.xaml src/Anhei4Map.App/RendererWindow.xaml.cs
 dotnet build -c Release
 dotnet test -c Release --no-build
-git diff --check
 ```
+
+## 验证标准
+
+- git diff against 90071df 无输出（两个文件完美恢复）
+- `dotnet build -c Release` 0 errors, 0 warnings
+- `dotnet test -c Release --no-build` 160/160 PASS
+
+---
 
 ## Git 提交信息
 
 ```
-fix: make viewport preparation best-effort, guard against stale navigation
+revert: restore RendererWindow to last working overlay state (90071df)
 
-PrepareMapViewportAsync is attempted up to 3 times with 500ms intervals
-but its failure no longer blocks NavigationReady. Navigation generation
-tracking prevents stale async flows from firing readiness after a newer
-navigation starts. This ensures Overlay displays even when viewport
-restyling cannot meet the 90% coverage threshold.
+Roll back viewport preparation changes from FIX-04 and FIX-05 which
+caused regression: OverlayWindow stopped appearing. Restore to the
+last manually verified working state with full DOM map capture and
+proportional 400x250 overlay display.
 ```
 
 ## Cursor 最终报告格式
 
 ```
-FIX_COMPLETE
+ROLLBACK_COMPLETE
 
-Fix: STAGE-03-ACCEPTANCE-FIX-05
-Type: FIX | Status: DONE | Commit: <hash>
-Viewport Preparation: Best-effort, 3 attempts × 500ms
-Fallback: NavigationReady fires regardless of preparation result
-Navigation Generation: Interlocked.Increment guards stale async flows
-Build: Release 0e0w | Tests: 160/160 PASS
+Task: STAGE-03-ACCEPTANCE-ROLLBACK-01
+Type: ROLLBACK | Status: DONE
+Commit: <hash>
+Restored to: 90071dfd8647d4599333c0c54bdcb7e0062f8d5d
+Files Restored:
+  - src/Anhei4Map.App/RendererWindow.xaml
+  - src/Anhei4Map.App/RendererWindow.xaml.cs
+Diff against 90071df: CLEAN
+Build: Release 0 errors 0 warnings | Tests: 160/160 PASS
 ```
