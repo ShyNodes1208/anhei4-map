@@ -1,4 +1,4 @@
-﻿# Stage 04: Map Viewport Redesign
+# Stage 04: Map Viewport Redesign
 
 ## Stage Info
 - Stage: STAGE-04 | Name: Map Viewport Redesign
@@ -6,59 +6,35 @@
 - Base: de1bb3a1971c9f4a2fe9f1075d432bbe603c818b (v0.3.0)
 
 ## Known Limitation
-Captured map region ~3.17:1 ratio, vertical content cut off.
+Captured map region ~3.17:1 ratio. Vertical content cut off.
+
+## Goal
+Diagnose why the selected map region is ~3.17:1, then apply a single approved fix.
 
 ## Diagnostic Toggle
-`--diagnose-map-viewport` CLI argument. Default off. One-shot per process. No persistence.
+`--diagnose-map-viewport` CLI arg. Default off. One-shot per process. No persistence.
 
 ## Diagnostic Output
-`%LocalAppData%\Anhei4Map\diagnostics\<yyyyMMdd-HHmmss-fff-<random6>>\`
-- manifest.json, page.json, candidates.json, layers.json
-- capture-full.png, capture-annotated.png, capture-crop.png
-- Retention: max 5 runs, 50MB/run, 250MB total
-- Privacy: no cookies, localStorage, sessionStorage, headers, auth, credentials
-- Full-page screenshots may capture visible page state (documented in release notes)
+`%LocalAppData%\Anhei4Map\diagnostics\latest\`
+- diagnostics.json (overwritten each run)
+- capture-full.png (overwritten each run)
+- capture-crop.png (overwritten each run)
 
-## Candidate Schema
-selector, selectorMatchIndex, tagName, id, className, parentTagName, parentId, parentClassName, boundedDomPath, boundedAncestorChain, left, top, right, bottom, width, height, clientWidth, clientHeight, offsetWidth, offsetHeight, scrollWidth, scrollHeight, display, visibility, opacity, position, overflow, overflowX, overflowY, zIndex, transform, transformOrigin, zoom, childCount, area, rank, selected, selectionReason
-- Types: double or explicit int; unavailable = null; no empty-string masking
-- Cap: 100 candidates, 12 ancestor levels, no full DOM export
+No multi-run retention. No manifest. No annotation. No capacity management.
 
-## Layer Summary
-Per selected candidate and limited ancestors/children: map root, viewport, parent layout, pane, tile layer, marker layer, control layer, canvas, SVG, image tile
-- Canvas: CSS size, backing-store size, bounding rect
-- SVG: viewBox, bounding rect, child count
-- Tile: total/loaded count, naturalWidth/Height, displayed size, className, nearest pane
-- Marker/control: count, pane/layer name, z-index
-- Caps on child summary depth/width; no full DOM traversal
-
-## Page Metrics
-url, title, document.readyState, window.innerWidth/Height, window.outerWidth/Height, visualViewport.width/height/scale, devicePixelRatio, documentElement.clientWidth/Height/scrollWidth/ScrollHeight, body.clientWidth/Height/scrollWidth/ScrollHeight, viewport meta content, page zoom, media query results: max-width:768px, max-width:1024px, max-width:1280px, min-width:1281px
-
-## WPF/WebView2/Bitmap Metrics (all with explicit unit labels)
-- WPF DIP: RendererWindow Width/Height/ActualWidth/ActualHeight, WebView2 ActualWidth/ActualHeight
-- DPI: VisualTreeHelper.GetDpi scale values, PresentationSource transforms
-- WebView2: CoreWebView2.ZoomFactor, RasterizationScale (null if unavailable)
-- Bitmap px: CapturePreview PixelWidth/Height, scaleX/Y, MapRegion CSS px, pre-floor float crop bounds, clamped Int32Rect, cropped PixelWidth/Height, final ratio
-- Each field tagged with unit: CSS px | WPF DIP | bitmap px | dimensionless
-
-## TASK-01 Absolute Prohibitions
-DOM modification, resize, scroll, page zoom, map interaction, window size experiments. Pure observation only.
-
-## Prohibited Approaches (3 Tiers)
-- Tier A (TASK-01 absolute): DOM modify, resize, scroll, zoom, map interact, window resize
-- Tier B (default-rejected; reassessable with evidence + Codex + user approval in TASK-03): RendererWindow resize, site fullscreen mode, ZoomFactor adjust, DOM selector fix
-- Tier C (permanent): Leaflet internals, JS object guessing, process injection, game memory, API redraw, Stretch=Fill, bitmap non-proportional stretch
+## Prohibited (permanent)
+- DOM modification, resize, scroll, zoom, map interaction, window resize
+- Leaflet internals, JS object guessing
+- Process injection, game memory
+- API redraw, Stretch=Fill, non-proportional stretch
 
 ## Codex Review Gates
-Plan Review -> Per-Task (TASK-01/03/04) -> TASK-02 Strategy -> Stage Final. Codex APPROVE required at each gate.
+Plan Review -> Per-Task (TASK-01, TASK-03) -> TASK-02 Analysis -> Stage Final.
 
-## Task Sequence
-- TASK-01A: CLI toggle + page/DOM/WPF metrics + JSON diagnostics (DIAGNOSTIC_IMPLEMENTATION)
-- TASK-01B: Capture artifacts + annotated bitmap + retention/failure handling (DIAGNOSTIC_IMPLEMENTATION)
-- TASK-02: Diagnostic Evidence Analysis and Strategy Selection (DOCS_ANALYSIS)
-- TASK-03: Approved Viewport Correction Implementation (IMPLEMENTATION)
-- TASK-04: Integration, Regression, Manual Acceptance and Final Review (INTEGRATION_ACCEPTANCE)
+## Tasks (3)
+- STAGE-04-TASK-01: Minimal map viewport diagnostics (3 files, overwrite latest)
+- STAGE-04-TASK-02: Evidence analysis and strategy approval
+- STAGE-04-TASK-03: Fix implementation, acceptance, Codex final review
 
-## Windows-Only Verification
-All: Windows 10/11, PowerShell, .NET/WPF/WebView2. No Linux/WSL. Per task: restore + build 0e0w + all tests pass + git diff --check clean + manual smoke test.
+## Windows-Only
+Windows 10/11, PowerShell, .NET/WPF/WebView2. No Linux/WSL.
