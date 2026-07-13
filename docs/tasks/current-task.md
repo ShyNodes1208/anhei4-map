@@ -138,13 +138,11 @@ public partial class MainWindow : Window
         var hwnd = new WindowInteropHelper(this).Handle;
         var win32 = new Win32Interop();
 
+        // IntPtr.Zero 是合法的零样式值——始终 OR 追加 WS_EX_TOOLWINDOW
         var exStyle = win32.GetWindowLongPtr(hwnd, Win32Native.GWL_EXSTYLE);
-        if (exStyle != IntPtr.Zero)
-        {
-            var newExStyle = new IntPtr(
-                exStyle.ToInt64() | unchecked((long)Win32Native.WS_EX_TOOLWINDOW));
-            win32.SetWindowLongPtr(hwnd, Win32Native.GWL_EXSTYLE, newExStyle);
-        }
+        var newExStyle = new IntPtr(
+            exStyle.ToInt64() | unchecked((long)Win32Native.WS_EX_TOOLWINDOW));
+        win32.SetWindowLongPtr(hwnd, Win32Native.GWL_EXSTYLE, newExStyle);
 
         // SetWindowPos 刷新窗口样式
         win32.SetWindowPos(
@@ -167,11 +165,12 @@ public partial class MainWindow : Window
 | HWND 获取 | `new WindowInteropHelper(this).Handle` |
 | 读取现有扩展样式 | `GetWindowLongPtr(hwnd, GWL_EXSTYLE)` |
 | 标志常量 | `WS_EX_TOOLWINDOW = 0x00000080` |
-| 位运算 | `exStyle.ToInt64() \| 0x80` → 保留原有样式，追加 TOOLWINDOW |
-| GetWindowLongPtr 返回 IntPtr.Zero | 不应用样式，不抛异常，继续执行 |
+| 计算新样式 | `new IntPtr(exStyle.ToInt64() | 0x80)` —— **始终执行**，即使 exStyle==IntPtr.Zero（零也是合法值） |
+| 不判断失败 | 不根据 GetWindowLongPtr 或 SetWindowLongPtr 返回零判断 API 失败（零可能是合法旧值） |
+| 不调 GetLastError | 不调 `Marshal.GetLastWin32Error()`，不抛 `Win32Exception`（保持 TASK-04 冻结规则） |
 | SetWindowPos 刷新 | 必须调用（新样式需要 `SetWindowPos` 生效） |
 | SetWindowPos flags | `SWP_NOACTIVATE \| SWP_NOMOVE \| SWP_NOSIZE \| SWP_SHOWWINDOW` |
-| 不应用 WS_EX_TRANSPARENT | TASK-06 排除鼠标穿透 |
+| 只添加 WS_EX_TOOLWINDOW | 不添加 WS_EX_TRANSPARENT、WS_EX_LAYERED、鼠标穿透或热键注册 |
 
 **MainWindow 构造函数规则：**
 - 无参构造，不注入任何依赖
