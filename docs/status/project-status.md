@@ -14,13 +14,13 @@
 | STAGE-02-TASK-02 | HotkeyDispatcher | TDD | DONE |
 | STAGE-02-TASK-03 | IWin32Interop Interface | SCAFFOLD | DONE |
 | STAGE-02-TASK-04 | Win32Interop Adapter | SCAFFOLD | DONE |
-| STAGE-02-TASK-05 | App + NuGet + Mutex + Runtime | SCAFFOLD | **READY** |
-| STAGE-02-TASK-06 | MainWindow + WebView2 Control | SCAFFOLD | PENDING |
+| STAGE-02-TASK-05 | App + NuGet + Mutex + Runtime | SCAFFOLD | DONE |
+| STAGE-02-TASK-06 | MainWindow + WebView2 Control | SCAFFOLD | **READY** |
 | STAGE-02-TASK-07 | WebView2 Setup + Navigation | SCAFFOLD | PENDING |
 
 ## Current
 
-- Current Task: STAGE-02-TASK-05 | Component: App + Runtime | Type: SCAFFOLD | Status: READY
+- Current Task: STAGE-02-TASK-06 | Component: MainWindow Shell | Type: SCAFFOLD | Status: READY
 - Next Executor: Cursor
-- Completed: 4/7
+- Completed: 5/7
 - NOT merged to main
