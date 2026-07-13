@@ -33,16 +33,10 @@ Cursor
 ### 1. `src/Anhei4Map.Core/Interop/IWin32Interop.cs`
 
 ```csharp
-using Anhei4Map.Core.Models;
-
 namespace Anhei4Map.Core.Interop;
 
 public interface IWin32Interop
 {
-    // Hotkey
-    int RegisterHotKey(IntPtr hwnd, int id, uint modifiers, uint key);
-    bool UnregisterHotKey(IntPtr hwnd, int id);
-
     // Window styles
     IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr newStyle);
     IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
@@ -54,6 +48,8 @@ public interface IWin32Interop
     DpiInfo GetDpiForWindow(IntPtr hwnd);
 }
 ```
+
+Hotkey registration (RegisterHotKey/UnregisterHotKey) is Stage 03 scope — excluded from this interface.
 
 ### 2. `src/Anhei4Map.Core/Interop/ScreenInfo.cs`
 
@@ -81,7 +77,8 @@ public record DpiInfo(float ScaleX, float ScaleY);
 - IntPtr 使用 `System.IntPtr`
 - 不引入第三方依赖
 - 不修改 csproj 或 Solution
-- 接口中的热键方法留待 Stage 03 使用
+- RegisterHotKey/UnregisterHotKey 明确排除（Stage 03 范围）
+- Stage 02 仅需要窗口样式和显示器信息抽象
 - SCAFFOLD 类型不需要 RED 测试
 
 ---
