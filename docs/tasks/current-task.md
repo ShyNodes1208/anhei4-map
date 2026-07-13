@@ -4,7 +4,7 @@
 STAGE-03-CROPPED-MAP-OVERLAY
 
 ## 任务编号
-STAGE-03-ACCEPTANCE-FIX-04
+STAGE-03-ACCEPTANCE-FIX-05
 
 ## 类型
 FIX
@@ -13,13 +13,10 @@ FIX
 READY
 
 ## 组件
-RendererWindow 1280×800 + 地图容器全视口布局
+视口准备降级 + 导航代次防护
 
 ## 父任务
-ACCEPTANCE-FIX-03 (90071df)
-
-## 前一派发提交（无效）
-0b51cbeb968f100a2571169b8d0c155ef21ee864 — L.map.invalidateSize() 规则无效，已废弃
+ACCEPTANCE-FIX-04 (d4bdeba — 90% 验证阻断 NavigationReady 导致 Overlay 不显示)
 
 ## 下一执行者
 Cursor
@@ -28,98 +25,96 @@ Cursor
 
 ## 允许修改的精确路径
 
-- `src/Anhei4Map.App/RendererWindow.xaml`（Height 720→800）
-- `src/Anhei4Map.App/RendererWindow.xaml.cs`（PrepareMapViewportAsync + 整合）
+- `src/Anhei4Map.App/RendererWindow.xaml.cs`
 
 ## 禁止修改范围
 
+- RendererWindow.xaml
 - OverlayWindow.xaml / OverlayWindow.xaml.cs
 - App.xaml.cs
 - `src/Anhei4Map.Core/**`、`src/Anhei4Map.Infrastructure/**`
 - `tests/**`、`docs/design/**`、`*.csproj`
-- 不修改截图/裁剪/Overlay 缩放逻辑
-- 不实现定时刷新、穿透、热键、人物同步
+- 不修改截图/裁剪/Overlay 逻辑
+- 不实现定时刷新、穿透、热键
 
 ---
 
-## 步 1：RendererWindow.xaml
-
-`Height="800"`，其余不变。
-
----
-
-## 步 2：PrepareMapViewportAsync（冻结）
+## 步 1：导航代次字段
 
 ```csharp
-private async Task<bool> PrepareMapViewportAsync()
+private int _navigationGeneration;
+private bool _navigationReadyRaised;
 ```
-
-**规则表：**
-
-| 事项 | 规则 |
-|------|------|
-| 前置条件 | _webViewInitialized && _navigationCompletedSuccessfully && CoreWebView2!=null && !_isClosed |
-| 不满足条件 | 返回 false，不抛异常 |
-| 地图选择器 | '#map'、'.leaflet-container'、'[class*="map"]'（与现有选择器一致） |
-| 候选规则 | 面积最大、getComputedStyle 可见、width>0、height>0 |
-| 未找到容器 | 返回 false |
-
-**CSS 注入：**
-```
-document.documentElement.style.margin = '0'
-document.documentElement.style.padding = '0'
-document.documentElement.style.overflow = 'hidden'
-document.body.style.margin = '0'
-document.body.style.padding = '0'
-document.body.style.overflow = 'hidden'
-```
-
-**地图容器样式：**
-```
-position = 'fixed'
-left = '0'
-top = '0'
-width = '100vw'
-height = '100vh'
-maxWidth = 'none'
-maxHeight = 'none'
-margin = '0'
-padding = '0'
-zIndex = '2147483647'
-```
-
-**布局重排（冻结）：**
-1. CSS 修改后调用两次 `window.requestAnimationFrame`（等待浏览器完成布局）
-2. 然后调用 `window.dispatchEvent(new Event('resize'))`
-
-**禁止访问 Leaflet 内部对象：**
-- 不调用 `L.map.invalidateSize()`
-- 不查找 Leaflet 地图实例
-- 不猜测网站全局变量
-- 不扫描私有字段
-- 不反射第三方库内部对象
-
-**布局验证：**
-1500ms 后重新查询同一地图容器的 `getBoundingClientRect()`。必须满足：
-- `rect.width > 0` 且 `rect.height > 0`
-- `rect.width >= window.innerWidth * 0.9`
-- `rect.height >= window.innerHeight * 0.9`
-
-满足 → 返回 true。不满足、JS 异常、JSON 空/null → 返回 false。不抛异常。
 
 ---
 
-## 步 3：初始化流程整合
+## 步 2：NavigationStarting
 
-`InitializeWebViewAsync` 中 `NavigationCompleted.IsSuccess == true` 之后：
-
+```csharp
+private void OnNavigationStarting(...)
+{
+    Interlocked.Increment(ref _navigationGeneration);
+    _navigationCompletedSuccessfully = false;
+    _navigationReadyRaised = false;
+    // ... 现有 DomainPolicy 检查不变
+}
 ```
-1. bool ready = await PrepareMapViewportAsync()
-2. if (!ready) return;  // 不触发 NavigationReady
-3. NavigationReady?.Invoke(this, EventArgs.Empty)
+
+---
+
+## 步 3：NavigationCompleted
+
+```csharp
+private async void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+{
+    if (!e.IsSuccess) return;
+    _navigationCompletedSuccessfully = true;
+
+    var generation = _navigationGeneration;
+
+    // 尝试视口准备——最多 3 次，500ms 间隔
+    for (var attempt = 0; attempt < 3; attempt++)
+    {
+        if (_isClosed || generation != _navigationGeneration) return;
+        if (await PrepareMapViewportAsync()) break;
+        if (attempt < 2) await Task.Delay(500);
+    }
+
+    // 无论视口准备成功与否，只要仍是同一次导航且未关闭且未触发过
+    if (!_isClosed && generation == _navigationGeneration && !_navigationReadyRaised)
+    {
+        _navigationReadyRaised = true;
+        if (!_isClosed) RaiseNavigationReady();
+    }
+}
 ```
 
-NavigationReady 仅在 PrepareMapViewportAsync 返回 true 后才触发。
+---
+
+## 步 4：规则冻结
+
+| 规则 | 值 |
+|------|-----|
+| PrepareMapViewportAsync 最大尝试 | 3 次 |
+| 间隔 | 500ms |
+| 成功 | 立即停止重试 |
+| 全部失败 | 不影响 NavigationReady 触发 |
+| 导航代次变化 | 旧流程立即停止，不触发 NavigationReady |
+| NavigationReady 触发条件 | `!_isClosed && generation==_navigationGeneration && !_navigationReadyRaised` |
+| 防重复 | `_navigationReadyRaised` 保证同次导航只触发一次 |
+| 旧流程防护 | 每次 await 后检查 `generation == _navigationGeneration` |
+
+---
+
+## 保留
+
+- RendererWindow 1280×800
+- PrepareMapViewportAsync 全部 CSS 注入 + requestAnimationFrame + resize + 90% 验证
+- 3000ms 预热 + 10 次截图重试
+- 地图视觉就绪检查
+- DOM 裁剪 + 完整截图
+- Overlay 最大 400×250 + 按比例缩放
+- 截图成功后才 Show Overlay
 
 ---
 
@@ -134,13 +129,13 @@ git diff --check
 ## Git 提交信息
 
 ```
-fix: expand RendererWindow to 1280x800, force map to fill viewport
+fix: make viewport preparation best-effort, guard against stale navigation
 
-Resize offscreen window to 1280x800. PrepareMapViewportAsync injects
-CSS to position the map container at fixed 0,0 spanning 100vw x 100vh.
-Uses requestAnimationFrame x2 + resize event for layout reflow. After
-1500ms verifies container covers >=90% of viewport before allowing
-NavigationReady. No Leaflet internal access.
+PrepareMapViewportAsync is attempted up to 3 times with 500ms intervals
+but its failure no longer blocks NavigationReady. Navigation generation
+tracking prevents stale async flows from firing readiness after a newer
+navigation starts. This ensures Overlay displays even when viewport
+restyling cannot meet the 90% coverage threshold.
 ```
 
 ## Cursor 最终报告格式
@@ -148,11 +143,10 @@ NavigationReady. No Leaflet internal access.
 ```
 FIX_COMPLETE
 
-Fix: STAGE-03-ACCEPTANCE-FIX-04
-Type: FIX | Status: DONE
-Commit: <hash>
-PrepareMapViewportAsync: CSS injection → requestAnimationFrame ×2 → resize → 1500ms → verify ≥90% viewport coverage
-Leaflet: No map instance access
-NavigationReady: Only after PrepareMapViewportAsync returns true
-Build: Release 0 errors 0 warnings | Tests: 160/160 PASS
+Fix: STAGE-03-ACCEPTANCE-FIX-05
+Type: FIX | Status: DONE | Commit: <hash>
+Viewport Preparation: Best-effort, 3 attempts × 500ms
+Fallback: NavigationReady fires regardless of preparation result
+Navigation Generation: Interlocked.Increment guards stale async flows
+Build: Release 0e0w | Tests: 160/160 PASS
 ```
