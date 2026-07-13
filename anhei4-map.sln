@@ -1,0 +1,50 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{189D6F04-BA16-435A-AC6E-EEAAAAE687FD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Anhei4Map.App", "src\Anhei4Map.App\Anhei4Map.App.csproj", "{FBC66435-9FE6-47EE-8D59-D7121B1D0604}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Anhei4Map.Core", "src\Anhei4Map.Core\Anhei4Map.Core.csproj", "{852AAE5A-8315-4937-BFEE-88C87140EB71}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Anhei4Map.Infrastructure", "src\Anhei4Map.Infrastructure\Anhei4Map.Infrastructure.csproj", "{B3139C6F-BEC2-4EC5-95BC-36F30A04EE25}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{F9A1BC54-5730-4699-A895-8A3701DF9F3E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Anhei4Map.Tests", "tests\Anhei4Map.Tests\Anhei4Map.Tests.csproj", "{22160107-710C-4805-8F60-4EA5B1767739}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{FBC66435-9FE6-47EE-8D59-D7121B1D0604}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FBC66435-9FE6-47EE-8D59-D7121B1D0604}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FBC66435-9FE6-47EE-8D59-D7121B1D0604}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FBC66435-9FE6-47EE-8D59-D7121B1D0604}.Release|Any CPU.Build.0 = Release|Any CPU
+		{852AAE5A-8315-4937-BFEE-88C87140EB71}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{852AAE5A-8315-4937-BFEE-88C87140EB71}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{852AAE5A-8315-4937-BFEE-88C87140EB71}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{852AAE5A-8315-4937-BFEE-88C87140EB71}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B3139C6F-BEC2-4EC5-95BC-36F30A04EE25}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B3139C6F-BEC2-4EC5-95BC-36F30A04EE25}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B3139C6F-BEC2-4EC5-95BC-36F30A04EE25}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B3139C6F-BEC2-4EC5-95BC-36F30A04EE25}.Release|Any CPU.Build.0 = Release|Any CPU
+		{22160107-710C-4805-8F60-4EA5B1767739}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{22160107-710C-4805-8F60-4EA5B1767739}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{22160107-710C-4805-8F60-4EA5B1767739}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{22160107-710C-4805-8F60-4EA5B1767739}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{FBC66435-9FE6-47EE-8D59-D7121B1D0604} = {189D6F04-BA16-435A-AC6E-EEAAAAE687FD}
+		{852AAE5A-8315-4937-BFEE-88C87140EB71} = {189D6F04-BA16-435A-AC6E-EEAAAAE687FD}
+		{B3139C6F-BEC2-4EC5-95BC-36F30A04EE25} = {189D6F04-BA16-435A-AC6E-EEAAAAE687FD}
+		{22160107-710C-4805-8F60-4EA5B1767739} = {F9A1BC54-5730-4699-A895-8A3701DF9F3E}
+	EndGlobalSection
+EndGlobal
