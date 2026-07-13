@@ -56,36 +56,69 @@ public sealed class Win32Interop : IWin32Interop
 
 ---
 
-## P/Invoke 签名
+## 32/64 位兼容策略
 
-### SetWindowLongPtr
+公共方法通过 `IntPtr.Size` 在运行时选择正确的 Native API：
 
 ```csharp
+// IntPtr.Size == 8 → 64 位进程 → SetWindowLongPtrW / GetWindowLongPtrW
+// IntPtr.Size == 4 → 32 位进程 → SetWindowLongW   / GetWindowLongW
+```
+
+### SetWindowLongPtr（公共方法）
+
+```csharp
+public IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong)
+{
+    if (IntPtr.Size == 8)
+        return SetWindowLongPtr64(hWnd, nIndex, dwNewLong);
+    else
+        return new IntPtr(SetWindowLong32(hWnd, nIndex, dwNewLong.ToInt32()));
+}
+
+// 64-bit: returns IntPtr directly
 [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
-private static extern IntPtr SetWindowLongPtrInternal(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+// 32-bit: returns int, dwNewLong is int (truncated from IntPtr via ToInt32)
+[DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
 ```
 
-在 64 位下直接调用。兼容 32 位：SetWindowLongPtrW 在 64 位下是 SetWindowLongPtr，在 32 位下由 Win32 API 自行处理。
-
-### GetWindowLongPtr
+### GetWindowLongPtr（公共方法）
 
 ```csharp
+public IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex)
+{
+    if (IntPtr.Size == 8)
+        return GetWindowLongPtr64(hWnd, nIndex);
+    else
+        return new IntPtr(GetWindowLong32(hWnd, nIndex));
+}
+
+// 64-bit: returns IntPtr directly
 [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
-private static extern IntPtr GetWindowLongPtrInternal(IntPtr hWnd, int nIndex);
+private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+
+// 32-bit: returns int → wrapped as new IntPtr(result)
+[DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
+private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
 ```
 
-### SetWindowPos
+**不允许**仅声明一个 `SetWindowLongPtrW` 而忽略 32 位进程兼容。
+
+### SetWindowPos（64/32 通用）
 
 ```csharp
 [DllImport("user32.dll", SetLastError = true)]
 [return: MarshalAs(UnmanagedType.Bool)]
-private static extern bool SetWindowPosInternal(
+private static extern bool SetWindowPos(
     IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 ```
 
-### 显示器枚举
+SetWindowPos 签名在 32 位和 64 位下完全一致，无需兼容分支。
 
-使用 `EnumDisplayMonitors` + 回调：
+### 显示器枚举
 
 ```csharp
 private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
@@ -97,6 +130,35 @@ private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, Moni
 private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
 ```
 
+### GetMonitorWorkingAreas 失败规则
+
+```csharp
+public ScreenInfo[] GetMonitorWorkingAreas()
+{
+    var areas = new List<ScreenInfo>();
+    EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (hMonitor, hdc, ref rect, dwData) =>
+    {
+        var mi = new MONITORINFOEX { cbSize = Marshal.SizeOf<MONITORINFOEX>() };
+        if (GetMonitorInfo(hMonitor, ref mi))
+        {
+            areas.Add(new ScreenInfo(
+                mi.rcWork.Left, mi.rcWork.Top,
+                mi.rcWork.Right - mi.rcWork.Left,
+                mi.rcWork.Bottom - mi.rcWork.Top));
+        }
+        // GetMonitorInfo 失败 → 跳过该显示器，继续枚举
+        return true; // 继续枚举下一个显示器
+    }, IntPtr.Zero);
+    // EnumDisplayMonitors 返回 false → 回调未触发 → areas 为空列表
+    return areas.ToArray();
+}
+```
+
+**冻结规则：**
+- `GetMonitorInfo` 返回 false → **跳过**该显示器，继续枚举下一个。
+- `EnumDisplayMonitors` 返回 false → 回调未被调用 → 返回空数组 `new ScreenInfo[0]`。
+- 不抛异常。
+
 ### GetDpiForWindow
 
 ```csharp
@@ -104,12 +166,20 @@ private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpm
 private static extern uint GetDpiForWindow(IntPtr hWnd);
 ```
 
-DPI 值转换为 ScaleX/ScaleY：
+**DPI 转换规则（冻结）：**
 ```csharp
-var dpi = GetDpiForWindow(hWnd);
-var scale = dpi / 96.0f;
-return new DpiInfo(scale, scale);
+public DpiInfo GetDpiForWindow(IntPtr hWnd)
+{
+    var dpi = GetDpiForWindowNative(hWnd);
+    var scale = dpi / 96.0f;
+    return new DpiInfo(scale, scale);
+}
 ```
+
+- `dpi`：原生 uint（如 96、120、144、192）
+- `scale`：`dpi / 96.0f`，float 除法
+- ScaleX 和 ScaleY 始终相等：都等于 `dpi / 96.0f`
+- `dpi == 0`（API 失败）→ scale = 0.0f，不抛异常，不替换为 1.0
 
 ---
 
@@ -172,9 +242,12 @@ public const uint SWP_SHOWWINDOW = 0x0040;
 ## 异常传播规则
 
 - P/Invoke 不抛异常（API 失败由返回值指示）
-- `SetLastError = true` + `Marshal.GetLastWin32Error()` 可在调用方需要时使用
-- 本实现层**不抛异常**——返回 API 原始值，由上层 WPF 代码决定如何处理失败
-- 若 API 返回 false、IntPtr.Zero 或 0，调用方可以自行调用 `Marshal.GetLastWin32Error()` 获取错误码
+- `SetLastError = true` + `Marshal.GetLastWin32Error()` 供上层调用方使用
+- 本实现层**不抛异常**——返回 API 原始值
+- 若 API 返回 false、IntPtr.Zero 或 0，调用方可自行 `Marshal.GetLastWin32Error()`
+- `GetDpiForWindow` 返回 0 → ScaleX=ScaleY=0.0f，不抛异常，不替换为 1.0
+- `GetMonitorInfo` 返回 false → 跳过该显示器
+- `EnumDisplayMonitors` 返回 false → 返回空数组
 
 ---
 
