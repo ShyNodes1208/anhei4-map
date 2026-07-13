@@ -1,29 +1,26 @@
 # Project status
 
 - Stage 01: COMPLETE (MERGED_TO_MAIN)
-- Phase: STAGE-02-APP-SHELL | Phase Status: IMPLEMENTATION_COMPLETE
-- Branch: feature/02-app-shell
-- Worktree: D:\AIProjects\anhei4-map-worktrees\stage-02-app-shell
-- Last Tests: 160/160 PASS
-- Latest Commit: 68d48a7
+- Stage 02: COMPLETE (v0.2.0-webview-shell-preview)
+- Phase: STAGE-03-CROPPED-MAP-OVERLAY | Phase Status: PLANNING
+- Branch: feature/03-cropped-map-overlay
+- Worktree: D:\AIProjects\anhei4-map-worktrees\stage-03-cropped-map-overlay
+- Base: 2bada05884a21f8fbe8179171daadfd178539349
 
-## Stage 02 Tasks — All Complete
+## Stage 03 Tasks — Planned
 
 | # | Component | Type | Status |
 |---|-----------|------|--------|
-| STAGE-02-TASK-01 | WindowStateMachine | TDD | DONE |
-| STAGE-02-TASK-02 | HotkeyDispatcher | TDD | DONE |
-| STAGE-02-TASK-03 | IWin32Interop | SCAFFOLD | DONE |
-| STAGE-02-TASK-04 | Win32Interop | SCAFFOLD | DONE |
-| STAGE-02-TASK-05 | App + NuGet + Mutex + Runtime | SCAFFOLD | DONE |
-| STAGE-02-TASK-06 | MainWindow + WebView2 | SCAFFOLD | DONE |
-| STAGE-02-TASK-07 | WebView2 Setup + Navigation | IMPLEMENTATION | DONE |
+| STAGE-03-TASK-01 | Hide MainWindow + DOM Query | IMPLEMENTATION | PENDING |
+| STAGE-03-TASK-02 | Screenshot Capture + Crop | TDD | PENDING |
+| STAGE-03-TASK-03 | OverlayWindow with Image | SCAFFOLD | PENDING |
+| STAGE-03-TASK-04 | 3s Refresh Timer + Guard | IMPLEMENTATION | PENDING |
+| STAGE-03-TASK-05 | Default Positioning + Sizing | SCAFFOLD | PENDING |
+| STAGE-03-TASK-06 | Integration & Manual Acceptance | INTEGRATION | PENDING |
 
 ## Current
 
-- Current Task: None
-- Completed: 7/7
-- Next Action: Manual run + user acceptance
-- Next Executor: User
-- Codex: NOT STARTED
+- Current Task: None (PLANNING_COMPLETE)
+- Next Executor: User / Claude
+- Cursor: NOT STARTED
 - NOT merged to main
