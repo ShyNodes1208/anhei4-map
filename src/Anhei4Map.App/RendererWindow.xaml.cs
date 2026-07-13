@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using Anhei4Map.Core.Models;
@@ -41,6 +42,7 @@ public partial class RendererWindow : Window
     private bool _navigationCompletedSuccessfully;
     private bool _isClosed;
     private bool _navigationReadyRaised;
+    private int _navigationGeneration;
 
     public event EventHandler? NavigationReady;
 
@@ -153,6 +155,7 @@ public partial class RendererWindow : Window
 
     private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
+        Interlocked.Increment(ref _navigationGeneration);
         _navigationCompletedSuccessfully = false;
         _navigationReadyRaised = false;
 
@@ -187,12 +190,47 @@ public partial class RendererWindow : Window
 
     private async Task OnNavigationCompletedSuccessAsync()
     {
-        var ready = await PrepareMapViewportAsync();
-        if (!ready || _isClosed)
+        var generation = _navigationGeneration;
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            if (_isClosed || generation != _navigationGeneration)
+            {
+                return;
+            }
+
+            try
+            {
+                if (await PrepareMapViewportAsync())
+                {
+                    break;
+                }
+            }
+            catch
+            {
+            }
+
+            if (attempt < 2)
+            {
+                await Task.Delay(500);
+
+                if (_isClosed || generation != _navigationGeneration)
+                {
+                    return;
+                }
+            }
+        }
+
+        if (generation != _navigationGeneration ||
+            _isClosed ||
+            !_navigationCompletedSuccessfully ||
+            webView.CoreWebView2 == null ||
+            _navigationReadyRaised)
         {
             return;
         }
 
+        _navigationReadyRaised = true;
         RaiseNavigationReady();
     }
 
@@ -330,13 +368,6 @@ public partial class RendererWindow : Window
 
     private void RaiseNavigationReady()
     {
-        if (_navigationReadyRaised)
-        {
-            return;
-        }
-
-        _navigationReadyRaised = true;
-
         try
         {
             NavigationReady?.Invoke(this, EventArgs.Empty);
