@@ -1,9 +1,6 @@
 ﻿using System.IO;
 using System.Threading;
 using System.Windows;
-using Anhei4Map.Core.Models;
-using Anhei4Map.Core.Services;
-using Anhei4Map.Infrastructure.Services;
 using Microsoft.Web.WebView2.Core;
 
 namespace Anhei4Map.App;
@@ -14,6 +11,7 @@ namespace Anhei4Map.App;
 public partial class App : Application
 {
     private static Mutex? _mutex;
+    private RendererWindow? _rendererWindow;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -68,45 +66,8 @@ public partial class App : Application
             return;
         }
 
-        var settingsDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Anhei4Map");
-        var settingsStore = new JsonSettingsStore(settingsDir);
-        AppSettings settings;
-        try
-        {
-            settings = settingsStore.LoadAsync().GetAwaiter().GetResult();
-        }
-        catch
-        {
-            settings = AppSettings.CreateDefaults();
-        }
-
-        WorkArea[] workAreas;
-        try
-        {
-            var win32 = new Win32Interop();
-            var screenInfos = win32.GetMonitorWorkingAreas();
-            workAreas = screenInfos
-                .Select(s => new WorkArea(s.Left, s.Top, s.Width, s.Height))
-                .ToArray();
-        }
-        catch
-        {
-            workAreas = [];
-        }
-
-        var placement = WindowBoundsNormalizer.Normalize(settings.Placement, workAreas);
-
-        var mainWindow = new MainWindow
-        {
-            Left = placement.Left,
-            Top = placement.Top,
-            Width = placement.Width,
-            Height = placement.Height,
-            Opacity = placement.Opacity
-        };
-        mainWindow.Show();
+        _rendererWindow = new RendererWindow();
+        _rendererWindow.Show();
 
         base.OnStartup(e);
     }
