@@ -243,6 +243,108 @@ public partial class RendererWindow : Window
         }
     }
 
+    private async Task<bool> IsMapVisualReadyAsync()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            return await await Dispatcher.InvokeAsync(IsMapVisualReadyCoreAsync);
+        }
+
+        return await IsMapVisualReadyCoreAsync();
+    }
+
+    private async Task<bool> IsMapVisualReadyCoreAsync()
+    {
+        if (!_webViewInitialized ||
+            !_navigationCompletedSuccessfully ||
+            _isClosed ||
+            webView.CoreWebView2 == null)
+        {
+            return false;
+        }
+
+        const string script = """
+            (function() {
+              const selectors = ['#map', '.leaflet-container', '[class*="map"]'];
+              let best = null, bestArea = 0;
+
+              function isVisible(el) {
+                const style = getComputedStyle(el);
+                if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) <= 0) return false;
+                const r = el.getBoundingClientRect();
+                return r.width > 0 && r.height > 0;
+              }
+
+              function isMarkerOrControl(el) {
+                let node = el;
+                while (node && node !== document.body) {
+                  const cls = (node.className && typeof node.className === 'string') ? node.className : '';
+                  if (/\b(marker|icon|control|popup|tooltip)\b/i.test(cls)) return true;
+                  node = node.parentElement;
+                }
+                return false;
+              }
+
+              for (const sel of selectors) {
+                const el = document.querySelector(sel);
+                if (!el || !isVisible(el)) continue;
+                const r = el.getBoundingClientRect();
+                const area = r.width * r.height;
+                if (area > bestArea) { best = el; bestArea = area; }
+              }
+              if (!best) return false;
+
+              const imgs = best.querySelectorAll('img');
+              for (const img of imgs) {
+                if (!img.complete || img.naturalWidth <= 0 || img.naturalHeight <= 0) continue;
+                if (!isVisible(img)) continue;
+                if (isMarkerOrControl(img)) continue;
+                const r = img.getBoundingClientRect();
+                const cls = (img.className && typeof img.className === 'string') ? img.className : '';
+                const parentCls = img.parentElement && img.parentElement.className ? String(img.parentElement.className) : '';
+                const hasTileClass = /\btile\b/i.test(cls) || /\btile\b/i.test(parentCls);
+                const largeNatural = img.naturalWidth >= 128 && img.naturalHeight >= 128;
+                const largeDisplay = r.width >= 128 && r.height >= 128;
+                if (hasTileClass || largeNatural || largeDisplay) return true;
+              }
+
+              const canvases = best.querySelectorAll('canvas');
+              for (const c of canvases) {
+                if (c.width <= 0 || c.height <= 0) continue;
+                const style = getComputedStyle(c);
+                if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) <= 0) continue;
+                const cr = c.getBoundingClientRect();
+                if (cr.width > 0 && cr.height > 0) return true;
+              }
+
+              function hasLargeBackground(el) {
+                if (!isVisible(el)) return false;
+                const r = el.getBoundingClientRect();
+                if (r.width < 128 || r.height < 128) return false;
+                const bg = getComputedStyle(el).backgroundImage;
+                return bg && bg !== 'none';
+              }
+
+              if (hasLargeBackground(best)) return true;
+              for (const el of best.querySelectorAll('*')) {
+                if (hasLargeBackground(el)) return true;
+              }
+
+              return false;
+            })()
+            """;
+
+        try
+        {
+            var result = await webView.CoreWebView2.ExecuteScriptAsync(script);
+            return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public async Task<BitmapSource?> CaptureAndCropMapAsync()
     {
         if (!Dispatcher.CheckAccess())
@@ -269,6 +371,11 @@ public partial class RendererWindow : Window
 
             var region = await TryGetMapRegionAsync();
             if (region == null)
+            {
+                return null;
+            }
+
+            if (!await IsMapVisualReadyAsync())
             {
                 return null;
             }

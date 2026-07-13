@@ -89,28 +89,29 @@ public partial class App : Application
     private async Task StartInitialCaptureAsync()
     {
         const int maxAttempts = 10;
-        const int delayMs = 500;
+        const int warmupDelayMs = 3000;
+        const int retryDelayMs = 1000;
+
+        await Task.Delay(warmupDelayMs);
 
         for (var attempt = 0; attempt < maxAttempts; attempt++)
         {
-            if (attempt > 0)
-            {
-                await Task.Delay(delayMs);
-            }
-
             var bitmap = await _rendererWindow!.CaptureAndCropMapAsync();
-            if (bitmap == null)
+            if (bitmap != null)
             {
-                continue;
+                _overlayWindow!.UpdateMapImage(bitmap);
+                if (!_overlayWindow.IsVisible)
+                {
+                    _overlayWindow.Show();
+                }
+
+                return;
             }
 
-            _overlayWindow!.UpdateMapImage(bitmap);
-            if (!_overlayWindow.IsVisible)
+            if (attempt < maxAttempts - 1)
             {
-                _overlayWindow.Show();
+                await Task.Delay(retryDelayMs);
             }
-
-            return;
         }
     }
 
