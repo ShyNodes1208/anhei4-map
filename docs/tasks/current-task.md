@@ -45,7 +45,7 @@ Cursor
 
 ---
 
-## 步 1：MapRegion 记录类型
+## 步 1：MapRegion 记录类型（冻结）
 
 `src/Anhei4Map.Core/Models/MapRegion.cs`：
 
@@ -60,7 +60,8 @@ public sealed record MapRegion(
     double DevicePixelRatio);
 ```
 
-DOM 查询成功返回 MapRegion。找不到地图元素返回 null。
+- 所有字段为 `double`（`getBoundingClientRect()` 返回小数）
+- 不在 DOM 查询阶段提前取整——取整由 TASK-02 裁剪时处理
 
 ---
 
@@ -84,17 +85,18 @@ DOM 查询成功返回 MapRegion。找不到地图元素返回 null。
 </Window>
 ```
 
-冻结属性：WindowStyle=None, ResizeMode=NoResize, ShowInTaskbar=False, Topmost=False, Width=1280, Height=720, Background=White, WebView2 Name=webView。
+冻结属性表不变。
 
 ---
 
-## 步 3：RendererWindow.xaml.cs 初始化
+## 步 3：RendererWindow.xaml.cs — 字段与状态
 
 ```csharp
 public partial class RendererWindow : Window
 {
-    private bool _webViewInitialized;
-    private bool _isClosing;
+    private bool _webViewInitialized;           // EnsureCoreWebView2Async 完成
+    private bool _navigationCompletedSuccessfully; // 最近一次 NavigationCompleted.IsSuccess
+    private bool _isClosed;
 
     public RendererWindow()
     {
@@ -102,74 +104,96 @@ public partial class RendererWindow : Window
         Left = -10000;
         Top = -10000;
         Loaded += OnLoaded;
-        Closing += OnClosing;
+        Closed += OnClosed;
+    }
+
+    private void OnClosed(object? sender, EventArgs e)
+    {
+        _isClosed = true;
     }
 }
 ```
 
-Left=-10000, Top=-10000 在构造函数设置（XAML 不支持负坐标）。WebView2 初始化在 Loaded 事件中触发。
+- `_navigationCompletedSuccessfully`：在 `NavigationCompleted` 中 `e.IsSuccess == true` 时设为 `true`
+- `NavigationStarting` 中设为 `false`（新导航开始时重置）
+- `_isClosed`：窗口 `Closed` 事件中设为 `true`，阻止关闭后访问 WebView2
 
-### WebView2 初始化（复用 Stage 02 规则）
+### WebView2 初始化
 
-1. CoreWebView2Environment.CreateAsync(userDataFolder=%LocalAppData%\Anhei4Map\WebView2)
-2. webView.EnsureCoreWebView2Async(env)
-3. 配置 8 项 settings（与 Stage 02 TASK-07 一致）
-4. 注册 NavigationStarting（DomainPolicy）、NewWindowRequested（Handled）、DownloadStarting（Cancel）
-5. webView.CoreWebView2.Navigate("https://helltides.com/")
-6. NavigationCompleted 中设置 _webViewInitialized = true
-
-简化规则（相对于 Stage 02）：不需要 WS_EX_TOOLWINDOW；初始化失败不弹 MessageBox（屏幕外窗口）；不需要 CancellationTokenSource。
+与 Stage 02 一致（8 settings、DomainPolicy、popups/downloads blocked），简化为无 WS_EX_TOOLWINDOW、无 CancellationTokenSource。
 
 ---
 
-## 步 4：DOM 查询方法
+## 步 4：RendererWindow 对外 API（冻结）
 
 ```csharp
-public async Task<MapRegion?> QueryMapRegionAsync()
-{
-    if (!_webViewInitialized || webView.CoreWebView2 == null) return null;
+public async Task<MapRegion?> TryGetMapRegionAsync()
+```
 
-    const string script = @"
+**返回值：** `MapRegion`（成功）或 `null`（任何失败）。
+
+**就绪检查——仅当以下全部满足时才执行脚本：**
+1. `_webViewInitialized == true`
+2. `_navigationCompletedSuccessfully == true`
+3. `webView.CoreWebView2 != null`
+4. `_isClosed == false`
+
+任一不满足 → 返回 `null`，不抛异常。
+
+---
+
+## 步 5：DOM 可见候选规则（冻结 JavaScript）
+
+```javascript
 (function() {
-  const selectors = ['#map', '.leaflet-container', '[class*=""map""]'];
+  const selectors = ['#map', '.leaflet-container', '[class*="map"]'];
   let best = null, bestArea = 0;
   for (const sel of selectors) {
     const el = document.querySelector(sel);
     if (!el) continue;
+    const style = getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
     const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) continue;
     const area = r.width * r.height;
-    if (area > 0 && area > bestArea) { best = el; bestArea = area; }
+    if (area > bestArea) { best = el; bestArea = area; }
   }
   if (!best) return null;
   const r = best.getBoundingClientRect();
   return JSON.stringify({ left: r.left, top: r.top, width: r.width, height: r.height, dpr: window.devicePixelRatio || 1 });
-})()";
-
-    string? json;
-    try { json = await webView.CoreWebView2.ExecuteScriptAsync(script); }
-    catch { return null; }
-
-    if (string.IsNullOrWhiteSpace(json) || json == "null") return null;
-
-    try { return JsonSerializer.Deserialize<MapRegion>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }); }
-    catch (JsonException) { return null; }
-}
+})()
 ```
 
-DOM 查询规则：选择器 #map, .leaflet-container, [class*="map"]；选面积最大且>0的可见元素；返回 left/top/width/height/dpr；无匹配返回 null；JS 异常返回 null；JSON 异常返回 null；WebView2 未就绪返回 null；所有失败路径不抛异常、不关闭程序。
+**候选规则：**
+- `getComputedStyle` 检查：display != "none"、visibility != "hidden"、opacity != "0"
+- `getBoundingClientRect`：width > 0、height > 0
+- 面积最大者胜出
+
+**JSON 规则：**
+- `ExecuteScriptAsync` 返回 JSON 编码字符串
+- C# 使用 `System.Text.Json.JsonSerializer.Deserialize<MapRegion>()` + `PropertyNameCaseInsensitive = true`
+- JavaScript 返回 `null` → C# 收到字符串 `"null"` → 返回 `null`
+- JSON 解析失败（`JsonException`）→ 返回 `null`
+- 反序列化后任一字段为 `NaN`、`Infinity`、负值 → 返回 `null`
+- 反序列化后 Width 或 Height 为 0 → 返回 `null`
+
+**所有失败路径返回 `null`，不抛异常，不关闭程序。**
 
 ---
 
-## 步 5：App.xaml.cs 修改
-
-删除 MainWindow 创建逻辑，改为创建 RendererWindow：
+## 步 6：App.xaml.cs 修改（冻结）
 
 ```csharp
+// 删除旧 MainWindow 创建逻辑，替换为:
 var rendererWindow = new RendererWindow();
 rendererWindow.Show();
 ```
 
-MainWindow.xaml/.cs 保留在项目中但不使用。
+- RendererWindow 实例必须保存为 `App` 的字段（如 `private RendererWindow? _rendererWindow`），不能仅使用局部变量
+- 不创建 MainWindow
+- 不创建 OverlayWindow
+- 不执行截图
+- MainWindow.xaml/.cs 保留在项目中但不使用
 
 ---
 
