@@ -24,16 +24,17 @@ Cursor
 
 | 内容 | TASK-06 | TASK-07 |
 |------|---------|---------|
-| MainWindow XAML + 属性 | 本任务 | — |
+| MainWindow XAML | 本任务 | — |
 | WebView2 控件声明 | 本任务 | — |
-| 窗口位置/大小恢复 | 本任务 | — |
 | App.xaml StartupUri 移除 | 本任务 | — |
-| 在 OnStartup 中显示窗口 | 本任务 | — |
-| CoreWebView2 Environment 创建 | — | TASK-07 |
+| OnStartup → MainWindow.Show() | 本任务 | — |
+| 设置加载 + 窗口边界恢复 | 本任务 | — |
+| WS_EX_TOOLWINDOW 应用 | 本任务 | — |
+| CoreWebView2Environment 创建 | — | TASK-07 |
 | EnsureCoreWebView2Async | — | TASK-07 |
-| 导航到 helltides.com | — | TASK-07 |
+| 导航 helltides.com | — | TASK-07 |
 | NavigationStarting 白名单 | — | TASK-07 |
-| 其他事件处理 | — | TASK-07 |
+| 所有 WebView2 事件处理 | — | TASK-07 |
 
 ---
 
@@ -42,7 +43,7 @@ Cursor
 - `src/Anhei4Map.App/MainWindow.xaml`（重写）
 - `src/Anhei4Map.App/MainWindow.xaml.cs`（重写）
 - `src/Anhei4Map.App/App.xaml`（移除 StartupUri）
-- `src/Anhei4Map.App/App.xaml.cs`（OnStartup 中创建并显示 MainWindow）
+- `src/Anhei4Map.App/App.xaml.cs`（OnStartup 中补充启动流程）
 
 ## 禁止修改范围
 
@@ -54,10 +55,11 @@ Cursor
 - `*.sln`
 - 不创建 CoreWebView2Environment
 - 不调用 EnsureCoreWebView2Async
-- 不执行导航
-- 不设置导航白名单
-- 不注册事件处理
-- 不处理关闭/保存逻辑
+- 不设置 WebView2.Source
+- 不注册任何 WebView2 事件
+- 不导航任何 URL
+- 不处理窗口 Closing
+- 不保存设置
 - 不实现 TASK-07
 
 ---
@@ -74,8 +76,6 @@ Cursor
     </Application.Resources>
 </Application>
 ```
-
-删除 `StartupUri="MainWindow.xaml"` 属性。MainWindow 改由 App.xaml.cs 代码创建。
 
 ---
 
@@ -99,7 +99,7 @@ Cursor
 </Window>
 ```
 
-**冻结属性：**
+**冻结属性表：**
 
 | 属性 | 值 | 原因 |
 |------|-----|------|
@@ -109,10 +109,11 @@ Cursor
 | ShowInTaskbar | False | 不显示在任务栏 |
 | Width | 640 | 默认宽度 |
 | Height | 360 | 默认高度 |
-| Background | Transparent | 透明背景 |
-| WebView2 Name | webView | 控件名称 |
-
-不带 `AllowsTransparency="True"`——该属性与 WebView2 的硬件渲染不兼容。
+| Background | Transparent | 透明画刷——避免窗口加载闪烁时的非透明底色；WebView2 填充整个客户区后看不到 |
+| AllowsTransparency | **不设置（默认 False）** | True 与 WebView2 硬件渲染不兼容，会导致控件变黑/不可见 |
+| WebView2 Name | webView | 供 TASK-07 引用 |
+| Grid 子元素 | 仅 WebView2 | 单一控件填满窗口客户区 |
+| WebView2.Source | **不设置** | 保持 null |
 
 ---
 
@@ -120,6 +121,7 @@ Cursor
 
 ```csharp
 using System.Windows;
+using System.Windows.Interop;
 
 namespace Anhei4Map.App;
 
@@ -128,90 +130,131 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        SourceInitialized += OnSourceInitialized;
+    }
+
+    private void OnSourceInitialized(object? sender, EventArgs e)
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        var win32 = new Win32Interop();
+
+        var exStyle = win32.GetWindowLongPtr(hwnd, Win32Native.GWL_EXSTYLE);
+        if (exStyle != IntPtr.Zero)
+        {
+            var newExStyle = new IntPtr(
+                exStyle.ToInt64() | unchecked((long)Win32Native.WS_EX_TOOLWINDOW));
+            win32.SetWindowLongPtr(hwnd, Win32Native.GWL_EXSTYLE, newExStyle);
+        }
+
+        // SetWindowPos 刷新窗口样式
+        win32.SetWindowPos(
+            hwnd,
+            Win32Native.HWND_TOPMOST,
+            0, 0, 0, 0,
+            Win32Native.SWP_NOACTIVATE |
+            Win32Native.SWP_NOMOVE |
+            Win32Native.SWP_NOSIZE |
+            Win32Native.SWP_SHOWWINDOW);
     }
 }
 ```
 
-- 构造函数仅调用 `InitializeComponent()`
-- 不创建 CoreWebView2Environment
-- 不调用 EnsureCoreWebView2Async
-- 不设置 WebView2 Source
-- 不注册任何事件处理
-- 不处理加载、关闭、日志或设置
+**WS_EX_TOOLWINDOW 规则（冻结）：**
+
+| 事项 | 规则 |
+|------|------|
+| 生命周期点 | `SourceInitialized` 事件（此时 HWND 已可用） |
+| HWND 获取 | `new WindowInteropHelper(this).Handle` |
+| 读取现有扩展样式 | `GetWindowLongPtr(hwnd, GWL_EXSTYLE)` |
+| 标志常量 | `WS_EX_TOOLWINDOW = 0x00000080` |
+| 位运算 | `exStyle.ToInt64() \| 0x80` → 保留原有样式，追加 TOOLWINDOW |
+| GetWindowLongPtr 返回 IntPtr.Zero | 不应用样式，不抛异常，继续执行 |
+| SetWindowPos 刷新 | 必须调用（新样式需要 `SetWindowPos` 生效） |
+| SetWindowPos flags | `SWP_NOACTIVATE \| SWP_NOMOVE \| SWP_NOSIZE \| SWP_SHOWWINDOW` |
+| 不应用 WS_EX_TRANSPARENT | TASK-06 排除鼠标穿透 |
+
+**MainWindow 构造函数规则：**
+- 无参构造，不注入任何依赖
+- 直接在构造函数中创建 `new Win32Interop()`
+- 不访问 Infrastructure 层
+- 不依赖 IWin32Interop 接口注入
 
 ---
 
-## 步 4：App.xaml.cs — 创建并显示 MainWindow
+## 步 4：App.xaml.cs — 启动流程
 
-修改 `OnStartup` 的最后部分（Runtime 检查通过之后、`base.OnStartup(e)` 之前）：
+在 `OnStartup` 中 Runtime 检查通过后、`base.OnStartup(e)` 之前插入：
 
 ```csharp
-// Runtime check passed — create and show the main window
-var mainWindow = new MainWindow();
-
-// Load settings and restore window bounds
+// 3. Load settings
+var settingsDir = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+    "Anhei4Map");
+var settingsStore = new JsonSettingsStore(settingsDir);
+AppSettings settings;
 try
 {
-    var settingsDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Anhei4Map");
-    var settingsStore = new JsonSettingsStore(settingsDir);
-    var settings = await settingsStore.LoadAsync();
-    var placement = WindowBoundsNormalizer.Normalize(
-        settings.Placement,
-        []); // Empty work areas → falls back to safe defaults via existing logic
-
-    mainWindow.Left = placement.Left;
-    mainWindow.Top = placement.Top;
-    mainWindow.Width = placement.Width;
-    mainWindow.Height = placement.Height;
+    settings = settingsStore.LoadAsync().GetAwaiter().GetResult();
 }
 catch
 {
-    // Use XAML defaults (640x360) on any load failure
+    settings = AppSettings.CreateDefaults();
 }
 
+// 4. Get monitor working areas for bounds normalization
+WorkArea[] workAreas;
+try
+{
+    var win32 = new Win32Interop();
+    var screenInfos = win32.GetMonitorWorkingAreas();
+    workAreas = screenInfos
+        .Select(s => new WorkArea(s.Left, s.Top, s.Width, s.Height))
+        .ToArray();
+}
+catch
+{
+    workAreas = [];
+}
+
+// 5. Normalize window bounds
+var placement = WindowBoundsNormalizer.Normalize(settings.Placement, workAreas);
+
+// 6. Create and show MainWindow
+var mainWindow = new MainWindow
+{
+    Left = placement.Left,
+    Top = placement.Top,
+    Width = placement.Width,
+    Height = placement.Height,
+    Opacity = placement.Opacity
+};
 mainWindow.Show();
-base.OnStartup(e);
 ```
 
-注意：由于 `OnStartup` 不是 async，设置加载使用同步等待：
+**启动流程（冻结顺序）：**
 
-```csharp
-var settings = settingsStore.LoadAsync().GetAwaiter().GetResult();
-```
+| 步 | 操作 | 失败处理 |
+|----|------|----------|
+| 1 | Mutex 检查 | 已有实例 → Shutdown（TASK-05 已实现） |
+| 2 | Runtime 检测 | 缺失/异常 → MessageBox + Shutdown（TASK-05 已实现） |
+| 3 | 加载设置 | 任何异常 → `AppSettings.CreateDefaults()` |
+| 4 | 获取工作区 | 任何异常 → `Array.Empty<WorkArea>()` |
+| 5 | 规范化窗口边界 | 纯逻辑，不抛异常 |
+| 6 | 创建 MainWindow + 赋值 Left/Top/Width/Height/Opacity + Show() | 不抛异常 |
+| — | base.OnStartup(e) | 最后调用 |
 
-- 设置加载失败（任何异常）→ 使用 XAML 默认值 640×360
-- 不记录日志
-- 不带入工作区数组（留空让 Normalizer 回退到安全默认值）
-- 不使用 IWin32Interop 获取真实显示器
+**设置恢复规则（冻结）：**
 
----
-
-## 步 5：MainWindow.xaml.cs 中的 WS_EX_TOOLWINDOW
-
-在 MainWindow 构造函数中添加：
-
-```csharp
-public MainWindow()
-{
-    InitializeComponent();
-    SourceInitialized += (_, _) => SetToolWindow();
-}
-
-private void SetToolWindow()
-{
-    var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-    var exStyle = Win32Native.GetWindowLongPtr64(hwnd, Win32Native.GWL_EXSTYLE);
-    Win32Native.SetWindowLongPtr64(hwnd, Win32Native.GWL_EXSTYLE,
-        new IntPtr(exStyle.ToInt64() | Win32Native.WS_EX_TOOLWINDOW));
-}
-```
-
-或使用封装的 `Win32Interop` 如果已可用。若 `Win32Interop` 已可用则优先使用它。
-
-- WS_EX_TOOLWINDOW 使窗口不在 Alt+Tab 列表中显示
-- 在 SourceInitialized 事件中设置（需要窗口句柄）
+| 事项 | 规则 |
+|------|------|
+| 设置目录 | `%LocalAppData%\Anhei4Map` |
+| 加载方式 | 同步等待 `LoadAsync().GetAwaiter().GetResult()` |
+| 加载失败 | 使用 `AppSettings.CreateDefaults()` |
+| 工作区获取 | `Win32Interop.GetMonitorWorkingAreas()` → `ScreenInfo[]` → `WorkArea[]` |
+| 工作区获取失败 | 空 `WorkArea[]`（Normalizer 有安全回退） |
+| 应用字段 | `Left, Top, Width, Height, Opacity` |
+| ZoomLevel | 不应用到 MainWindow（由 WebView2 缩放控制，Stage 03+） |
+| 不保存设置 | 推迟到后续阶段 |
 
 ---
 
@@ -227,7 +270,7 @@ git diff --check
 ## 验证标准
 
 - `dotnet build -c Release` 0 errors, 0 warnings
-- `dotnet test -c Release --no-build` 全部通过 (160/160)
+- `dotnet test -c Release --no-build` 160/160 PASS
 - `git diff --check` clean
 
 ---
@@ -237,11 +280,11 @@ git diff --check
 ```
 feat: create MainWindow shell with WebView2 control
 
-SCAFFOLD: MainWindow is a borderless, topmost, transparent-background
-window hosting a named WebView2 control. App.xaml StartupUri removed;
-window created and shown in OnStartup. Settings loaded to restore
-window bounds with fallback to 640x360 defaults. WebView2 navigation
-and event handling deferred to TASK-07.
+SCAFFOLD: MainWindow is borderless (WindowStyle=None), topmost, with
+WebView2 control filling the client area. WS_EX_TOOLWINDOW applied at
+SourceInitialized. App.xaml StartupUri removed; OnStartup loads settings,
+normalizes bounds via WindowBoundsNormalizer, and shows the window.
+No WebView2 navigation or event wiring — deferred to TASK-07.
 ```
 
 ---
@@ -261,8 +304,10 @@ Files Modified:
   - src/Anhei4Map.App/MainWindow.xaml.cs
   - src/Anhei4Map.App/App.xaml
   - src/Anhei4Map.App/App.xaml.cs
-WebView2 Control: Named "webView", no navigation
-Window Properties: WindowStyle=None, Topmost=True, ShowInTaskbar=False
 Build: Release 0 errors 0 warnings
 Tests: 160/160 PASS
+AllowsTransparency: NOT set (default false — WebView2 compatibility)
+WS_EX_TOOLWINDOW: Applied at SourceInitialized, with SetWindowPos refresh
+WebView2 Control: Named "webView", no Source, no events, no navigation
+Settings: Loaded, bounds restored, fallback to defaults on failure
 ```
