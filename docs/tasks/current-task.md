@@ -1,10 +1,10 @@
-﻿# 当前任务
+# 当前任务
 
 ## 阶段
 STAGE-03-CROPPED-MAP-OVERLAY
 
 ## 任务编号
-STAGE-03-TASK-01
+STAGE-03-TASK-02
 
 ## 类型
 IMPLEMENTATION
@@ -13,7 +13,7 @@ IMPLEMENTATION
 READY
 
 ## 组件
-RendererWindow + DOM map-region detection
+CapturePreview crop + OverlayWindow + top-left defaults
 
 ## 下一执行者
 Cursor
@@ -22,178 +22,178 @@ Cursor
 
 ## 允许修改的精确路径
 
-- `src/Anhei4Map.App/RendererWindow.xaml`（新建）
-- `src/Anhei4Map.App/RendererWindow.xaml.cs`（新建）
-- `src/Anhei4Map.App/App.xaml.cs`（修改——创建 RendererWindow 替代 MainWindow）
-- `src/Anhei4Map.Core/Models/MapRegion.cs`（新建——DOM 查询结果类型）
+- `src/Anhei4Map.App/OverlayWindow.xaml`（新建）
+- `src/Anhei4Map.App/OverlayWindow.xaml.cs`（新建）
+- `src/Anhei4Map.App/RendererWindow.xaml.cs`（添加 `CaptureAndCropMapAsync` 方法）
+- `src/Anhei4Map.App/App.xaml.cs`（创建 OverlayWindow + 单次手动截图调用）
 
 ## 禁止修改范围
 
+- `src/Anhei4Map.Core/**`
 - `src/Anhei4Map.Infrastructure/**`
-- `src/Anhei4Map.Core/Services/**`
-- `src/Anhei4Map.Core/State/**`
-- `src/Anhei4Map.Core/Interop/**`
+- `RendererWindow.xaml`
 - `MainWindow.xaml` / `MainWindow.xaml.cs`
 - `tests/**`
 - `docs/design/**`
 - `*.csproj`
-- 不实现截图
-- 不实现裁剪
-- 不实现 OverlayWindow
-- 不实现定时器
-- 不实现 TASK-02+
+- 不实现定时器（TASK-03）
+- 不实现鼠标穿透、热键、人物同步
 
 ---
 
-## 步 1：MapRegion 记录类型（冻结）
-
-`src/Anhei4Map.Core/Models/MapRegion.cs`：
-
-```csharp
-namespace Anhei4Map.Core.Models;
-
-public sealed record MapRegion(
-    double Left,
-    double Top,
-    double Width,
-    double Height,
-    double DevicePixelRatio);
-```
-
-- 所有字段为 `double`（`getBoundingClientRect()` 返回小数）
-- 不在 DOM 查询阶段提前取整——取整由 TASK-02 裁剪时处理
-
----
-
-## 步 2：RendererWindow.xaml
+## 步 1：OverlayWindow.xaml
 
 ```xml
-<Window x:Class="Anhei4Map.App.RendererWindow"
+<Window x:Class="Anhei4Map.App.OverlayWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:wpf="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         WindowStyle="None"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
-        Topmost="False"
-        Width="1280"
-        Height="720"
-        Background="White">
-    <Grid>
-        <wpf:WebView2 x:Name="webView" />
-    </Grid>
+        Topmost="True"
+        Width="300"
+        Height="300"
+        Opacity="0.7"
+        Background="Transparent">
+    <Image x:Name="MapImage"
+           Stretch="UniformToFill" />
 </Window>
 ```
 
-冻结属性表不变。
+**冻结属性表：**
+
+| 属性 | 值 | 原因 |
+|------|-----|------|
+| WindowStyle | None | 无边框叠加层 |
+| ResizeMode | NoResize | 固定尺寸 |
+| ShowInTaskbar | False | 不显示在任务栏 |
+| Topmost | True | 始终置顶 |
+| Width | 300 | 默认宽度 |
+| Height | 300 | 默认高度 |
+| Opacity | 0.7 | 默认不透明度 |
+| Background | Transparent | 透明背景 |
+| Image Name | MapImage | 供代码引用 |
+| Stretch | UniformToFill | 裁剪图片填满控件 |
 
 ---
 
-## 步 3：RendererWindow.xaml.cs — 字段与状态
+## 步 2：OverlayWindow.xaml.cs
 
 ```csharp
-public partial class RendererWindow : Window
+public partial class OverlayWindow : Window
 {
-    private bool _webViewInitialized;           // EnsureCoreWebView2Async 完成
-    private bool _navigationCompletedSuccessfully; // 最近一次 NavigationCompleted.IsSuccess
-    private bool _isClosed;
-
-    public RendererWindow()
+    public OverlayWindow()
     {
         InitializeComponent();
-        Left = -10000;
-        Top = -10000;
-        Loaded += OnLoaded;
-        Closed += OnClosed;
     }
 
-    private void OnClosed(object? sender, EventArgs e)
+    public void UpdateMapImage(BitmapSource croppedBitmap)
     {
-        _isClosed = true;
+        MapImage.Source = croppedBitmap;
     }
 }
 ```
 
-- `_navigationCompletedSuccessfully`：在 `NavigationCompleted` 中 `e.IsSuccess == true` 时设为 `true`
-- `NavigationStarting` 中设为 `false`（新导航开始时重置）
-- `_isClosed`：窗口 `Closed` 事件中设为 `true`，阻止关闭后访问 WebView2
-
-### WebView2 初始化
-
-与 Stage 02 一致（8 settings、DomainPolicy、popups/downloads blocked），简化为无 WS_EX_TOOLWINDOW、无 CancellationTokenSource。
+- `croppedBitmap` 在传入前必须已经 `Freeze()`（RendererWindow 中处理）
+- `BitmapSource` 可由 UI 线程安全访问
 
 ---
 
-## 步 4：RendererWindow 对外 API（冻结）
+## 步 3：CaptureAndCropMapAsync 方法
+
+在 `RendererWindow.xaml.cs` 中添加：
 
 ```csharp
-public async Task<MapRegion?> TryGetMapRegionAsync()
+public async Task<BitmapSource?> CaptureAndCropMapAsync()
+{
+    var region = await TryGetMapRegionAsync();
+    if (region == null) return null;
+
+    var stream = new MemoryStream();
+    try
+    {
+        await webView.CoreWebView2.CapturePreviewAsync(
+            CoreWebView2CapturePreviewImageFormat.Png, stream);
+        stream.Position = 0;
+
+        var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        var frame = decoder.Frames[0];
+        var bitmapWidth = frame.PixelWidth;
+        var bitmapHeight = frame.PixelHeight;
+
+        // 缩放比例
+        var scaleX = bitmapWidth / webView.ActualWidth;
+        var scaleY = bitmapHeight / webView.ActualHeight;
+
+        // 裁剪坐标
+        var cropX = (int)Math.Floor(region.Left * scaleX);
+        var cropY = (int)Math.Floor(region.Top * scaleY);
+        var cropRight = (int)Math.Ceiling((region.Left + region.Width) * scaleX);
+        var cropBottom = (int)Math.Ceiling((region.Top + region.Height) * scaleY);
+
+        // 边界保护
+        cropX = Math.Max(0, cropX);
+        cropY = Math.Max(0, cropY);
+        cropRight = Math.Min(bitmapWidth, cropRight);
+        cropBottom = Math.Min(bitmapHeight, cropBottom);
+
+        var cropWidth = cropRight - cropX;
+        var cropHeight = cropBottom - cropY;
+
+        if (cropWidth <= 0 || cropHeight <= 0) return null;
+
+        var cropped = new CroppedBitmap(frame, new Int32Rect(cropX, cropY, cropWidth, cropHeight));
+        cropped.Freeze();
+        return cropped;
+    }
+    catch
+    {
+        return null;
+    }
+    finally
+    {
+        stream.Dispose();
+    }
+}
 ```
 
-**返回值：** `MapRegion`（成功）或 `null`（任何失败）。
-
-**就绪检查——仅当以下全部满足时才执行脚本：**
-1. `_webViewInitialized == true`
-2. `_navigationCompletedSuccessfully == true`
-3. `webView.CoreWebView2 != null`
-4. `_isClosed == false`
-
-任一不满足 → 返回 `null`，不抛异常。
+**截图规则（冻结）：**
+- 格式：PNG（`CoreWebView2CapturePreviewImageFormat.Png`）
+- MemoryStream 使用后释放（finally 块）
+- 裁剪按 floor/ceiling 确保完整覆盖
+- 无效裁剪区域（≤0）→ 返回 null
+- `CroppedBitmap.Freeze()` 后返回（跨线程安全）
+- 任何异常 → 返回 null
 
 ---
 
-## 步 5：DOM 可见候选规则（冻结 JavaScript）
+## 步 4：App.xaml.cs 修改
 
-```javascript
-(function() {
-  const selectors = ['#map', '.leaflet-container', '[class*="map"]'];
-  let best = null, bestArea = 0;
-  for (const sel of selectors) {
-    const el = document.querySelector(sel);
-    if (!el) continue;
-    const style = getComputedStyle(el);
-    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
-    const r = el.getBoundingClientRect();
-    if (r.width <= 0 || r.height <= 0) continue;
-    const area = r.width * r.height;
-    if (area > bestArea) { best = el; bestArea = area; }
-  }
-  if (!best) return null;
-  const r = best.getBoundingClientRect();
-  return JSON.stringify({ left: r.left, top: r.top, width: r.width, height: r.height, dpr: window.devicePixelRatio || 1 });
-})()
-```
-
-**候选规则：**
-- `getComputedStyle` 检查：display != "none"、visibility != "hidden"、opacity != "0"
-- `getBoundingClientRect`：width > 0、height > 0
-- 面积最大者胜出
-
-**JSON 规则：**
-- `ExecuteScriptAsync` 返回 JSON 编码字符串
-- C# 使用 `System.Text.Json.JsonSerializer.Deserialize<MapRegion>()` + `PropertyNameCaseInsensitive = true`
-- JavaScript 返回 `null` → C# 收到字符串 `"null"` → 返回 `null`
-- JSON 解析失败（`JsonException`）→ 返回 `null`
-- 反序列化后任一字段为 `NaN`、`Infinity`、负值 → 返回 `null`
-- 反序列化后 Width 或 Height 为 0 → 返回 `null`
-
-**所有失败路径返回 `null`，不抛异常，不关闭程序。**
-
----
-
-## 步 6：App.xaml.cs 修改（冻结）
+在 `OnStartup` 中 RendererWindow 之后添加：
 
 ```csharp
-// 删除旧 MainWindow 创建逻辑，替换为:
-var rendererWindow = new RendererWindow();
-rendererWindow.Show();
+_overlayWindow = new OverlayWindow();
+_overlayWindow.Left = 20;
+_overlayWindow.Top = 20;
+_overlayWindow.Show();
+
+// 单次截图（用于验收），异步 fire-and-forget
+_ = Task.Run(async () =>
+{
+    await Task.Delay(5000); // 等待 WebView2 初始化和导航完成
+    var bitmap = await _rendererWindow!.CaptureAndCropMapAsync();
+    if (bitmap != null)
+    {
+        Dispatcher.Invoke(() => _overlayWindow.UpdateMapImage(bitmap));
+    }
+});
 ```
 
-- RendererWindow 实例必须保存为 `App` 的字段（如 `private RendererWindow? _rendererWindow`），不能仅使用局部变量
-- 不创建 MainWindow
-- 不创建 OverlayWindow
-- 不执行截图
-- MainWindow.xaml/.cs 保留在项目中但不使用
+**规则：**
+- Task.Delay(5000) 给 WebView2 足够的初始化和首次导航时间
+- Dispatcher.Invoke 确保 UI 线程更新 Image
+- 本任务只支持单次截图，不实现循环刷新
+- OverlayWindow 实例保存为 `App` 字段
 
 ---
 
@@ -207,22 +207,21 @@ git diff --check
 
 ## 验证标准
 
-- dotnet build -c Release 0 errors 0 warnings
-- dotnet test -c Release --no-build 160/160 PASS
-- git diff --check clean
+- `dotnet build -c Release` 0 errors, 0 warnings
+- `dotnet test -c Release --no-build` 160/160 PASS
+- `git diff --check` clean
 
 ---
 
 ## Git 提交信息
 
 ```
-feat: create offscreen RendererWindow with DOM map region detection
+feat: implement screenshot capture, crop, and overlay window
 
-STAGE-03-TASK-01: New RendererWindow positioned offscreen at (-10000,-10000)
-with embedded WebView2 loading helltides.com. QueryMapRegionAsync() uses
-ExecuteScriptAsync with multi-selector fallback (#map, .leaflet-container,
-[class*="map"]) and returns the largest visible candidate. App.xaml.cs
-now creates RendererWindow instead of MainWindow.
+STAGE-03-TASK-02: CapturePreviewAsync PNG screenshot → crop by DOM
+coordinates scaled to bitmap dimensions → display on OverlayWindow
+at (20,20) 300x300 opacity 0.7. Single manual capture triggered 5s
+after startup. CroppedBitmap frozen for thread safety.
 ```
 
 ---
@@ -232,21 +231,20 @@ now creates RendererWindow instead of MainWindow.
 ```
 TASK_COMPLETE
 
-Task: STAGE-03-TASK-01
-Component: RendererWindow + DOM map-region detection
+Task: STAGE-03-TASK-02
+Component: CapturePreview crop + OverlayWindow + top-left defaults
 Type: IMPLEMENTATION
 Status: DONE
 Commit: <hash>
 Files Created:
-  - src/Anhei4Map.App/RendererWindow.xaml
-  - src/Anhei4Map.App/RendererWindow.xaml.cs
-  - src/Anhei4Map.Core/Models/MapRegion.cs
+  - src/Anhei4Map.App/OverlayWindow.xaml
+  - src/Anhei4Map.App/OverlayWindow.xaml.cs
 Files Modified:
+  - src/Anhei4Map.App/RendererWindow.xaml.cs
   - src/Anhei4Map.App/App.xaml.cs
-WebView2 Init: Per Stage 02 rules (8 settings, DomainPolicy)
-DOM Selectors: #map, .leaflet-container, [class*="map"]
-DOM Result: MapRegion record
-Failure: All failures return null, no throw, no shutdown
+Capture Format: PNG
+Crop Scaling: bitmapPixels / webView.ActualSize
+Overlay: (20,20), 300x300, Opacity 0.7, Topmost=True
 Build: Release 0 errors 0 warnings
 Tests: 160/160 PASS
 ```

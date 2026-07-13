@@ -5,19 +5,19 @@
 - Phase: STAGE-03-CROPPED-MAP-OVERLAY | Phase Status: IMPLEMENTATION_IN_PROGRESS
 - Branch: feature/03-cropped-map-overlay
 - Worktree: D:\AIProjects\anhei4-map-worktrees\stage-03-cropped-map-overlay
-- Base: 2bada05884a21f8fbe8179171daadfd178539349
+- Last Tests: 160/160 PASS
 
 ## Stage 03 Tasks
 
 | # | Component | Type | Status |
 |---|-----------|------|--------|
-| STAGE-03-TASK-01 | RendererWindow + DOM Query | IMPLEMENTATION | **READY** |
-| STAGE-03-TASK-02 | Screenshot Crop + OverlayWindow | IMPLEMENTATION | PENDING |
+| STAGE-03-TASK-01 | RendererWindow + DOM Query | IMPLEMENTATION | DONE |
+| STAGE-03-TASK-02 | Screenshot Crop + OverlayWindow | IMPLEMENTATION | **READY** |
 | STAGE-03-TASK-03 | 3s Refresh Guard + Integration | INTEGRATION | PENDING |
 
 ## Current
 
-- Current Task: STAGE-03-TASK-01 | Type: IMPLEMENTATION | Status: READY
+- Current Task: STAGE-03-TASK-02 | Type: IMPLEMENTATION | Status: READY
 - Next Executor: Cursor
-- Completed: 0/3
+- Completed: 1/3
 - NOT merged to main
