@@ -445,25 +445,8 @@ public partial class RendererWindow : Window
             try
             {
                 var cropped = new CroppedBitmap(bitmap, new Int32Rect(left, top, cropWidth, cropHeight));
-
-                var sourceWidth = cropped.PixelWidth;
-                var sourceHeight = cropped.PixelHeight;
-                var side = Math.Min(sourceWidth, sourceHeight);
-
-                if (side <= 0)
-                {
-                    return null;
-                }
-
-                var squareX = (sourceWidth - side) / 2;
-                var squareY = (sourceHeight - side) / 2;
-
-                var squareBitmap = new CroppedBitmap(
-                    cropped,
-                    new Int32Rect(squareX, squareY, side, side));
-
-                squareBitmap.Freeze();
-                return squareBitmap;
+                cropped.Freeze();
+                return cropped;
             }
             catch
             {
