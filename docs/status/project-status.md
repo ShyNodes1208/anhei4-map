@@ -1,24 +1,21 @@
 # Project status
 
-- Phase: STAGE-01-FOUNDATION | Phase Status: COMPLETE
-- Dev Status: MERGED_TO_MAIN | Review Status: APPROVED
-- Codex Decision: APPROVED
-- Branch: main
-- Worktree: D:\AIProjects\anhei4-map
+- Stage 01: COMPLETE (MERGED_TO_MAIN)
+- Phase: STAGE-02-APP-SHELL | Phase Status: PLANNING
+- Branch: feature/02-app-shell
+- Worktree: D:\AIProjects\anhei4-map-worktrees\stage-02-app-shell
+- Base Main: a48bf37725879ee4172e2321d21491e563461846
 
-## Stage 01 Summary
+## Stage 02 Info
 
-- Stage 01 Feature Head: 99fb0001ff431e1b4b8d22773e0e81f6dd8929e9
-- Stage 01 Merge Commit: 1f3058f8dd520ba4041267ff7c587de1e2cc92e5
-- Original Findings: 6/6 CLOSED
-- Final Build: 0 errors, 0 warnings
-- Final Tests: 122/122 PASS
-- git diff --check: PASS
+- Name: App Shell + Core State Logic
+- Slug: app-shell
+- Goal: WPF borderless topmost window with WebView2 loading helltides.com; Core state machine and hotkey dispatcher
 
 ## Current
 
-- Current Task: None
-- Next Action: Stage 02 planning
-- Stage 02: NOT STARTED
-- feature/01-foundation branch: RETAINED
-- Stage 01 Worktree: RETAINED
+- Current Task: None (PLANNING_COMPLETE)
+- Next Executor: User / Claude
+- Cursor: NOT STARTED
+- Codex: NOT STARTED
+- NOT merged to main
