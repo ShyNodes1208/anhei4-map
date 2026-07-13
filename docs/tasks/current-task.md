@@ -4,7 +4,7 @@
 STAGE-03-CROPPED-MAP-OVERLAY
 
 ## 任务编号
-STAGE-03-ACCEPTANCE-FIX-03
+STAGE-03-ACCEPTANCE-FIX-04
 
 ## 类型
 FIX
@@ -13,10 +13,10 @@ FIX
 READY
 
 ## 组件
-移除正方形裁剪 + 按比例缩放到 400×250 Overlay
+RendererWindow 1280×800 + 地图容器全视口布局
 
 ## 父任务
-ACCEPTANCE-FIX-01 (875f659) 被撤销; ACCEPTANCE-FIX-02 (fe3d7f4) 保留
+ACCEPTANCE-FIX-03 (90071df — 未 push)
 
 ## 下一执行者
 Cursor
@@ -25,130 +25,142 @@ Cursor
 
 ## 问题
 
-居中正方形裁剪只保留了地图中央，丢失了地图边缘区域。用户要求完整显示原始地图，保持比例缩放到紧凑的左上角窗口。
+DOM 地图截图源的宽高比约为 3.17:1 (400×126)，地图纵向视野过短。网站地图容器当前保持其默认的宽扁布局。单纯增大 Overlay MaxHeight 无效——截图源本身比例决定了最终显示。
 
 ## 修复策略
 
-1. RendererWindow: 删除第二次居中正方形裁剪，返回完整 DOM 地图区域
-2. OverlayWindow: 按比例缩放，内部最大 400×250
+后台 RendererWindow 扩高到 1280×800，并使用 JavaScript 强制地图容器占满整个 WebView2 视口，触发 resize/invalidateSize 重排。
 
 ---
 
 ## 允许修改的精确路径
 
+- `src/Anhei4Map.App/RendererWindow.xaml`
 - `src/Anhei4Map.App/RendererWindow.xaml.cs`
-- `src/Anhei4Map.App/OverlayWindow.xaml`
-- `src/Anhei4Map.App/OverlayWindow.xaml.cs`
 
 ## 禁止修改范围
 
-- `App.xaml.cs`
-- `RendererWindow.xaml`
+- OverlayWindow.xaml / OverlayWindow.xaml.cs
+- App.xaml.cs
 - `src/Anhei4Map.Core/**`、`src/Anhei4Map.Infrastructure/**`
 - `tests/**`、`docs/design/**`、`*.csproj`
-- 不实现定时刷新、鼠标穿透、热键、人物同步
+- 不修改截图/裁剪/Overlay 缩放逻辑
+- 不实现定时刷新、穿透、热键、人物同步
 
 ---
 
-## 步 1：RendererWindow — 删除正方形裁剪
-
-在 `CaptureAndCropMapCoreAsync` 中，删除 ACCEPTANCE-FIX-01 引入的居中正方形裁剪代码块。DOM 地图区域裁剪完成后直接 `Freeze()` 并返回。
-
-```csharp
-// 删除以下代码块:
-// 居中正方形裁剪
-// {
-//     var sourceWidth = cropped.PixelWidth;
-//     ...
-//     return squareBitmap;
-// }
-
-// 替换为:
-cropped.Freeze();
-return cropped;
-```
-
-完整保留：地图视觉就绪检查、DOM 查询、CapturePreviewAsync、scale 换算、边界保护、OnLoad。
-
----
-
-## 步 2：OverlayWindow.xaml
+## 步 1：RendererWindow.xaml
 
 ```xml
-<Window x:Class="Anhei4Map.App.OverlayWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        WindowStyle="None"
-        ResizeMode="NoResize"
-        ShowInTaskbar="False"
-        Topmost="True"
-        Width="400"
-        Height="250"
-        Left="20"
-        Top="20"
-        WindowStartupLocation="Manual"
-        AllowsTransparency="True"
-        Background="Transparent"
-        Opacity="0.7">
-    <Image x:Name="MapImage"
-           Stretch="Uniform" />
-</Window>
+<Window ... Width="1280" Height="800" ...>
 ```
 
-不变属性：所有 Stage 03 已冻结的 Overlay 属性。初始 400×250 为最大尺寸，实际由截图比例缩小。
+将 `Height` 从 `720` 改为 `800`。其余属性不变。
 
 ---
 
-## 步 3：OverlayWindow.xaml.cs — 动态尺寸
+## 步 2：PrepareMapViewportAsync 方法
+
+在 `InitializeWebViewAsync` 中，`NavigationCompleted.IsSuccess == true` 之后、触发 `NavigationReady` 之前调用：
 
 ```csharp
-public partial class OverlayWindow : Window
+private async Task<bool> PrepareMapViewportAsync()
 {
-    private const double MaxOverlayWidth = 400;
-    private const double MaxOverlayHeight = 250;
+    const string script = @"
+(function() {
+  try {
+    document.documentElement.style.margin = '0';
+    document.documentElement.style.padding = '0';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.margin = '0';
+    document.body.style.padding = '0';
+    document.body.style.overflow = 'hidden';
 
-    public void UpdateMapImage(BitmapSource bitmap)
+    const selectors = ['#map', '.leaflet-container', '[class*=""map""]'];
+    let best = null, bestArea = 0;
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width<=0||r.height<=0) continue;
+      const area = r.width*r.height;
+      if (area>bestArea) { best=el; bestArea=area; }
+    }
+    if (!best) return false;
+
+    best.style.position = 'fixed';
+    best.style.left = '0';
+    best.style.top = '0';
+    best.style.width = '100vw';
+    best.style.height = '100vh';
+    best.style.maxWidth = 'none';
+    best.style.maxHeight = 'none';
+    best.style.margin = '0';
+    best.style.padding = '0';
+    best.style.zIndex = '9999';
+
+    window.dispatchEvent(new Event('resize'));
+
+    if (typeof window.L !== 'undefined' && window.L.map) {
+      try { window.L.map.invalidateSize(); } catch(e) {}
+    }
+
+    return true;
+  } catch(e) { return false; }
+})()";
+
+    if (!_webViewInitialized || webView.CoreWebView2 == null || _isClosed) return false;
+
+    try
     {
-        if (bitmap.PixelWidth <= 0 || bitmap.PixelHeight <= 0) return;
-
-        var scale = Math.Min(
-            MaxOverlayWidth / bitmap.PixelWidth,
-            MaxOverlayHeight / bitmap.PixelHeight);
-
-        if (!double.IsFinite(scale) || scale <= 0) return;
-
-        Width = bitmap.PixelWidth * scale;
-        Height = bitmap.PixelHeight * scale;
-
-        MapImage.Source = bitmap;
+        var result = await webView.CoreWebView2.ExecuteScriptAsync(script);
+        return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
+    }
+    catch
+    {
+        return false;
     }
 }
 ```
 
-**冻结公式：**
+**冻结规则：**
+
+| 事项 | 规则 |
+|------|------|
+| 选择器 | 复用现有 3 个 |
+| 目标容器 | 面积最大的可见地图容器 |
+| CSS 定位 | `fixed; left:0; top:0; width:100vw; height:100vh` |
+| resize 事件 | `window.dispatchEvent(new Event('resize'))` |
+| Leaflet | 仅当 `L` 和 `L.map` 存在且 `invalidateSize` 可调用时调用 |
+| Leaflet 失败 | 不影响函数返回值 |
+| 整体失败 | 返回 false；不抛异常；不退出程序 |
+| 执行线程 | WebView2 UI 线程 |
+
+---
+
+## 步 3：初始化流程整合
+
+在 `InitializeWebViewAsync` 中：
+
 ```
-scale = Min(400 / bitmap.PixelWidth, 250 / bitmap.PixelHeight)
-displayWidth  = bitmap.PixelWidth  × scale  (≤ 400)
-displayHeight = bitmap.PixelHeight × scale  (≤ 250)
+NavigationCompleted.IsSuccess == true
+  → await PrepareMapViewportAsync()
+  → await Task.Delay(1500)  // 等待地图重新布局和瓦片加载
+  → NavigationReady?.Invoke()
 ```
 
-**规则：**
-- scale 为正有限数
-- Width ≤ 400, Height ≤ 250
-- Stretch = Uniform（不变形）
-- 不使用 Fill、UniformToFill、ScaleTransform
-- 无二次裁剪
-- 保持 Opacity=0.7
+保留现有 3000ms 预热（在 App.xaml.cs 的 StartInitialCaptureAsync 中已存在），加上此处的 1500ms 重排等待，总共约 4500ms。
+
+**不得**引入永久刷新或循环重试。
 
 ---
 
 ## 步 4：预期效果
 
-- 完整显示 HellTides 地图区域（地形 + 标记）
-- 保持原始宽高比
-- 最大 400×250
-- 左上角 (20, 20)
-- 不覆盖游戏右上角小地图
+- 截图源比例 ≈ 1280:800 = 1.6:1
+- Overlay 接近 400×250
+- 地图纵向上完整显示更多区域
+- 所有现有截图/裁剪/Overlay 逻辑不变
 
 ---
 
@@ -171,11 +183,12 @@ git diff --check
 ## Git 提交信息
 
 ```
-fix: remove square crop, display full map proportionally in 400x250 overlay
+fix: expand RendererWindow to 1280x800 and force map to full viewport
 
-Remove the centered square crop introduced in ACCEPTANCE-FIX-01. The
-full DOM map region is now returned by CaptureAndCropMapAsync and scaled
-proportionally (max 400x250) in the OverlayWindow via Uniform stretch.
+Resize offscreen renderer to 1280x800 and inject CSS to position the
+map container at fixed 0,0 spanning 100vw×100vh. Dispatches resize
+event and optionally calls Leaflet invalidateSize. Prepares the map
+to render at a ~1.6:1 ratio matching the target 400x250 overlay.
 ```
 
 ---
@@ -185,17 +198,15 @@ proportionally (max 400x250) in the OverlayWindow via Uniform stretch.
 ```
 FIX_COMPLETE
 
-Fix: STAGE-03-ACCEPTANCE-FIX-03
-Previous: ACCEPTANCE-FIX-01 (reverted), ACCEPTANCE-FIX-02 (kept)
+Fix: STAGE-03-ACCEPTANCE-FIX-04
 Type: FIX
 Status: DONE
 Commit: <hash>
 Files Modified:
+  - src/Anhei4Map.App/RendererWindow.xaml
   - src/Anhei4Map.App/RendererWindow.xaml.cs
-  - src/Anhei4Map.App/OverlayWindow.xaml
-  - src/Anhei4Map.App/OverlayWindow.xaml.cs
-Capture: Full DOM map crop, no secondary square crop
-Overlay: Proportional max 400x250, Uniform
+Renderer Viewport: 1280x800
+Map Container: fixed 100vw×100vh, resize event + Leaflet fallback
 Build: Release 0 errors 0 warnings
 Tests: 160/160 PASS
 ```
