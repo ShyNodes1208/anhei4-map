@@ -76,7 +76,7 @@
 **修复要求:** 实现 10MB 阈值检查、app.log → app.1.log → app.2.log → 删除最旧文件的轮转逻辑。补充阈值触发、轮转顺序、淘汰行为的测试。补充写入异常后再次写入的测试（验证 finally 释放锁，非证明死锁缺陷）。
 
 **修复记录:**
-- 状态: FIXED_PENDING_CODEX_REREVIEW
+- 状态: CLOSED_BY_CODEX_REREVIEW_01
 - 修复任务: STAGE-01-REVIEW-FIX-03
 - 规格 Commit: 370bf1ce25d1b4f9f174dd84df683c39ab6e5a9b
 - 实现 Commit: 10aba4eb94ea7de7cf6e9bed7655308d683cf600
@@ -103,7 +103,7 @@
 **修复要求:** 根据窗口主要相交的 WorkArea（而非固定 `workAreas[0]`）决定 max size。补充副显示器大于主显示器的负坐标多显示器测试。
 
 **修复记录:**
-- 状态: FIXED_PENDING_CODEX_REREVIEW
+- 状态: CLOSED_BY_CODEX_REREVIEW_01
 - 修复任务: STAGE-01-REVIEW-FIX-04
 - 实现 Commit: a8d7411db742a82305c02bf0698b80bc0ae9615d
 - 日期: 2026-07-12
@@ -128,7 +128,7 @@
 **修复建议:** 使用毫秒精度时间戳或 GUID 后缀。补充候选文件名已存在时的测试。
 
 **修复记录:**
-- 状态: FIXED_PENDING_CODEX_REREVIEW
+- 状态: CLOSED_BY_CODEX_REREVIEW_01
 - 修复任务: STAGE-01-REVIEW-FIX-05 → FIX1
 - 初始实现: 96f01e66ecd9b9345199bba780f945d59192a4e1
 - 初次验收: CHANGES_REQUIRED (GUID truncated to 8 chars, ~32 bits)
