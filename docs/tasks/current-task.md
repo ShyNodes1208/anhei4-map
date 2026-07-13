@@ -4,32 +4,31 @@
 STAGE-04-MAP-VIEWPORT-REDESIGN
 
 ## 状态
-CODEX_PLAN_REREVIEW_2_READY
+CODEX_PLAN_FINAL_REREVIEW_READY
 
 ## 当前任务
 None
 
 ## Codex 审核历史
-- Plan Review 01: REJECT (7 HIGH, 3 MEDIUM — all 10 CONFIRMED)
-- Plan Review 02: REJECT (3 PARTIALLY_RESOLVED, 2 UNRESOLVED, 4 new — all 9 CONFIRMED)
+- Plan 01: REJECT (7 HIGH, 3 MEDIUM — all CONFIRMED)
+- Plan 02: REJECT (3 PARTIAL, 2 UNRESOLVED, 4 new — all CONFIRMED)
+- Plan 03: REJECT (1 HIGH, 1 MEDIUM — all CONFIRMED)
 
-## 修订内容
-- 任务从 4 拆为 5 (01A + 01B + 02 + 03 + 04)
-- 每个任务有完整 Allowed/Forbidden/I/O/Exit/Verification/Codex Gate
-- 10 条文件保留算法
-- 20 类异常处理 + 导航代次一致性
-- 标注仅绘制 bitmap 副本，不修改 DOM
-- manifest 原子写入 + complete 规则
-- iframe/shadow DOM 覆盖
+## 终版修订
+- 5 tasks with frozen Allowed Paths (no wildcards)
+- 01A: 7 exact files, 01B: 8 exact files
+- RendererWindow diagnostic interface frozen (2 internal methods)
+- Shared 01A/01B run contract (11 rules)
+- 30-row error contract with all columns
+- Retention algorithm with deterministic sort
+- JSON/PNG size caps
+- iframe/shadow DOM rules
 
 ## 审核者
 Codex
 
 ## 下一动作
-Codex 第三次审核修订后的 Stage 04 计划
-
-## 用户批准
-Codex 三审 + Claude 裁决之后
+Codex final review of Stage 04 plan
 
 ## 开发约束
 Cursor BLOCKED。所有 TASK 为 PENDING。
