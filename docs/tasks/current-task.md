@@ -4,7 +4,7 @@
 STAGE-02-APP-SHELL
 
 ## 任务编号
-STAGE-02-TASK-03
+STAGE-02-TASK-04
 
 ## 类型
 SCAFFOLD
@@ -13,7 +13,7 @@ SCAFFOLD
 READY
 
 ## 组件
-IWin32Interop Interface + ScreenInfo/DpiInfo Record Types
+Win32Interop Adapter — IWin32Interop 的 P/Invoke 实现
 
 ## 下一执行者
 Cursor
@@ -22,88 +22,180 @@ Cursor
 
 ## 设计依据
 
-[02-architecture.md:152-176](docs/design/02-architecture.md): IWin32Interop — Thin Adapter 完整接口定义。
-
-以下规格直接取自冻结架构文档。
+[02-architecture.md:29-33](docs/design/02-architecture.md): Win32Interop.cs — IWin32Interop impl (thin adapter)
 
 ---
 
 ## 创建文件
 
-### 1. `src/Anhei4Map.Core/Interop/IWin32Interop.cs`
+### 1. `src/Anhei4Map.App/Win32Interop.cs`
+
+实现 `IWin32Interop`，包含所有 5 个方法的 P/Invoke 调用。
 
 ```csharp
-namespace Anhei4Map.Core.Interop;
+namespace Anhei4Map.App;
 
-public interface IWin32Interop
+public sealed class Win32Interop : IWin32Interop
 {
-    // Window styles
-    IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr newStyle);
-    IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
-    bool SetWindowPos(IntPtr hwnd, IntPtr hwndInsertAfter,
-        int x, int y, int cx, int cy, uint flags);
+    // --- Window Styles ---
 
-    // Display
-    ScreenInfo[] GetMonitorWorkingAreas();
-    DpiInfo GetDpiForWindow(IntPtr hwnd);
+    public IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong) { ... }
+    public IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex) { ... }
+    public bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int width, int height, uint flags) { ... }
+
+    // --- Display ---
+
+    public ScreenInfo[] GetMonitorWorkingAreas() { ... }
+    public DpiInfo GetDpiForWindow(IntPtr hWnd) { ... }
 }
 ```
 
-Hotkey registration (RegisterHotKey/UnregisterHotKey) is Stage 03 scope — excluded from this interface.
+### 2. `src/Anhei4Map.App/Win32Native.cs` (可选)
 
-### 2. `src/Anhei4Map.Core/Interop/ScreenInfo.cs`
+若不使用单独文件，可将 P/Invoke 签名和常量放在 Win32Interop.cs 的内部静态类中。
+
+---
+
+## P/Invoke 签名
+
+### SetWindowLongPtr
 
 ```csharp
-namespace Anhei4Map.Core.Interop;
-
-public record ScreenInfo(int Left, int Top, int Width, int Height);
+[DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+private static extern IntPtr SetWindowLongPtrInternal(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 ```
 
-### 3. `src/Anhei4Map.Core/Interop/DpiInfo.cs`
+在 64 位下直接调用。兼容 32 位：SetWindowLongPtrW 在 64 位下是 SetWindowLongPtr，在 32 位下由 Win32 API 自行处理。
+
+### GetWindowLongPtr
 
 ```csharp
-namespace Anhei4Map.Core.Interop;
+[DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+private static extern IntPtr GetWindowLongPtrInternal(IntPtr hWnd, int nIndex);
+```
 
-public record DpiInfo(float ScaleX, float ScaleY);
+### SetWindowPos
+
+```csharp
+[DllImport("user32.dll", SetLastError = true)]
+[return: MarshalAs(UnmanagedType.Bool)]
+private static extern bool SetWindowPosInternal(
+    IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+```
+
+### 显示器枚举
+
+使用 `EnumDisplayMonitors` + 回调：
+
+```csharp
+private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
+
+[DllImport("user32.dll")]
+private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
+
+[DllImport("user32.dll")]
+private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
+```
+
+### GetDpiForWindow
+
+```csharp
+[DllImport("user32.dll")]
+private static extern uint GetDpiForWindow(IntPtr hWnd);
+```
+
+DPI 值转换为 ScaleX/ScaleY：
+```csharp
+var dpi = GetDpiForWindow(hWnd);
+var scale = dpi / 96.0f;
+return new DpiInfo(scale, scale);
 ```
 
 ---
 
-## 技术边界
+## 结构体定义
 
-- 仅定义接口和记录类型，不实现
-- 不写 P/Invoke（由 TASK-04 Win32Interop 实现）
-- 不引用 WPF、Win32、WebView2
-- IntPtr 使用 `System.IntPtr`
-- 不引入第三方依赖
-- 不修改 csproj 或 Solution
-- RegisterHotKey/UnregisterHotKey 明确排除（Stage 03 范围）
-- Stage 02 仅需要窗口样式和显示器信息抽象
-- SCAFFOLD 类型不需要 RED 测试
+### RECT
+
+```csharp
+[StructLayout(LayoutKind.Sequential)]
+private struct RECT
+{
+    public int Left, Top, Right, Bottom;
+}
+```
+
+### MONITORINFOEX
+
+```csharp
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+private struct MONITORINFOEX
+{
+    public int cbSize;
+    public RECT rcMonitor;
+    public RECT rcWork;
+    public uint dwFlags;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+    public string szDevice;
+}
+```
+
+使用 `cbSize = Marshal.SizeOf<MONITORINFOEX>()`。
+
+---
+
+## Win32 常量
+
+需要定义（可在内部静态类）：
+
+```csharp
+// SetWindowLongPtr
+public const int GWL_EXSTYLE = -20;
+
+// Extended window styles
+public const uint WS_EX_TOPMOST = 0x00000008;
+public const uint WS_EX_TRANSPARENT = 0x00000020;
+public const uint WS_EX_TOOLWINDOW = 0x00000080;
+
+// SetWindowPos
+public static readonly IntPtr HWND_TOPMOST = new(-1);
+public const uint SWP_NOACTIVATE = 0x0010;
+public const uint SWP_NOMOVE = 0x0002;
+public const uint SWP_NOSIZE = 0x0001;
+public const uint SWP_SHOWWINDOW = 0x0040;
+```
+
+若使用 `nint` / `nuint`（.NET 8 原生支持），可用 `nint` 替代 `IntPtr`，但接口定义使用 `IntPtr`，保持一致。
+
+---
+
+## 异常传播规则
+
+- P/Invoke 不抛异常（API 失败由返回值指示）
+- `SetLastError = true` + `Marshal.GetLastWin32Error()` 可在调用方需要时使用
+- 本实现层**不抛异常**——返回 API 原始值，由上层 WPF 代码决定如何处理失败
+- 若 API 返回 false、IntPtr.Zero 或 0，调用方可以自行调用 `Marshal.GetLastWin32Error()` 获取错误码
 
 ---
 
 ## 允许修改的精确路径
 
-- `src/Anhei4Map.Core/Interop/IWin32Interop.cs`（新建）
-- `src/Anhei4Map.Core/Interop/ScreenInfo.cs`（新建）
-- `src/Anhei4Map.Core/Interop/DpiInfo.cs`（新建）
+- `src/Anhei4Map.App/Win32Interop.cs`（新建）
+- `src/Anhei4Map.App/Win32Native.cs`（可选，新建——若使用单独文件放 P/Invoke 和常量）
 
 ## 禁止修改范围
 
-- `src/Anhei4Map.App/**`
+- `src/Anhei4Map.Core/**`
 - `src/Anhei4Map.Infrastructure/**`
-- `src/Anhei4Map.Core/State/**`
-- `src/Anhei4Map.Core/Services/**`
-- `src/Anhei4Map.Core/Models/**`
-- `src/Anhei4Map.Core/Logging/**`
 - `tests/**`
 - `docs/design/**`
 - `*.csproj`
 - `*.sln`
-- 不实现 Win32Interop 适配器
-- 不实现 P/Invoke
-- 不修改 HotkeyDispatcher 或 WindowStateMachine
+- 不引入 RegisterHotKey / UnregisterHotKey
+- 不实现 WebView2
+- 不实现 MainWindow 逻辑
+- 不实现状态机调用
+- 不实现 TASK-05+
 
 ---
 
@@ -118,20 +210,22 @@ git diff --check
 ## 验证标准
 
 - `dotnet build -c Release` 0 errors, 0 warnings
-- `dotnet test -c Release --no-build` 全部通过 (160/160, 无新增测试)
+- `dotnet test -c Release --no-build` 全部通过 (160/160)
+- SCAFFOLD 类型无需新增单元测试
 - `git diff --check` clean
-- 只创建了 3 个新文件
 
 ---
 
 ## Git 提交信息
 
 ```
-feat: define IWin32Interop interface with display and hotkey records
+feat: implement Win32Interop P/Invoke adapter
 
-SCAFFOLD: Interface-only — Win32 P/Invoke adapter contract for
-downstream WPF implementation. Includes ScreenInfo and DpiInfo
-record types per frozen architecture design.
+SCAFFOLD: Thin P/Invoke wrapper implementing IWin32Interop. Covers
+SetWindowLongPtr, GetWindowLongPtr, SetWindowPos, monitor enumeration
+via EnumDisplayMonitors/GetMonitorInfo, and GetDpiForWindow. Includes
+RECT, MONITORINFOEX structs and standard Win32 constants. No hotkey
+registration — that is Stage 03 scope.
 ```
 
 ---
@@ -141,16 +235,19 @@ record types per frozen architecture design.
 ```
 TASK_COMPLETE
 
-Task: STAGE-02-TASK-03
-Component: IWin32Interop Interface
+Task: STAGE-02-TASK-04
+Component: Win32Interop Adapter
 Type: SCAFFOLD
 Status: DONE
 Commit: <hash>
 Files Created:
-  - src/Anhei4Map.Core/Interop/IWin32Interop.cs
-  - src/Anhei4Map.Core/Interop/ScreenInfo.cs
-  - src/Anhei4Map.Core/Interop/DpiInfo.cs
+  - src/Anhei4Map.App/Win32Interop.cs
+  - src/Anhei4Map.App/Win32Native.cs (if separate)
 Build: Release 0 errors 0 warnings
 Tests: 160/160 PASS
-Files NOT Modified (verified): <列出>
+P/Invoke APIs Used:
+  - SetWindowLongPtrW, GetWindowLongPtrW, SetWindowPos
+  - EnumDisplayMonitors, GetMonitorInfo
+  - GetDpiForWindow
+Excluded: RegisterHotKey, UnregisterHotKey
 ```
