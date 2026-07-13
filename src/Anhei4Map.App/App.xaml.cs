@@ -10,4 +10,3 @@ namespace Anhei4Map.App;
 public partial class App : Application
 {
 }
-
