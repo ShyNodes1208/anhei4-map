@@ -36,5 +36,8 @@ Plan Review -> Per-Task (TASK-01, TASK-03) -> TASK-02 Analysis -> Stage Final.
 - STAGE-04-TASK-02: Evidence analysis and strategy approval
 - STAGE-04-TASK-03: Fix implementation, acceptance, Codex final review
 
+## Governance
+All tasks must comply with `docs/governance/project-development-rules.md`. Every dispatch requires Minimal Implementation Check and Overengineering Check: PASS.
+
 ## Windows-Only
 Windows 10/11, PowerShell, .NET/WPF/WebView2. No Linux/WSL.

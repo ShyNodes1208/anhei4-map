@@ -2,6 +2,8 @@
 
 All tasks: PENDING. Cursor BLOCKED until Codex plan approval + user approval.
 
+**Governance:** All tasks must comply with `docs/governance/project-development-rules.md`. Each dispatch requires Minimal Implementation Check and Overengineering Check: PASS.
+
 ---
 
 ## STAGE-04-TASK-01: Minimal Map Viewport Diagnostics
