@@ -4,16 +4,22 @@
 STAGE-04-MAP-VIEWPORT-REDESIGN
 
 ## 状态
-PLANNING_COMPLETE
+CODEX_PLAN_REVIEW_READY
 
 ## 当前任务
 None
 
-## 下一动作
-等待用户批准 Stage 04 计划后派发 STAGE-04-TASK-01
+## 审核者
+Codex
 
-## 下一执行者
-User / Claude
+## 审核文件
+docs/reviews/stage-04-plan-review-request.md
+
+## 下一动作
+Codex 独立审核 Stage 04 计划
+
+## 用户批准
+Codex 审核 + Claude 裁决之后
 
 ## 开发约束
-Cursor 尚未开始开发。TASK-01 只做诊断，不改变最终地图布局。
+Cursor 禁止派发。所有 TASK 为 PENDING。

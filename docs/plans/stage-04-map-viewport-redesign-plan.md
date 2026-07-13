@@ -43,3 +43,17 @@ Before changing any layout behavior, TASK-01 will instrument the DOM query and c
 
 ## Non-Goals
 - Periodic refresh, mouse passthrough, hotkeys, character sync, game memory access
+
+## Codex Review Gates
+
+### Planning Gate
+Claude plan → Codex read-only review → Claude adjudication → User approval → TASK-01 dispatch.
+
+### Per-Task Gate (TASK-01, TASK-03, TASK-04)
+Cursor commit → Claude scope/build/test check → Codex independent diff review → Claude adjudication → Cursor fix (if needed) → Codex re-review → Claude marks DONE.
+
+### TASK-02 Special Gate
+TASK-01 diagnostics complete → Claude summarizes evidence → Codex reviews conclusions → Claude adjudicates and selects strategy → User approves strategy → TASK-03 dispatch.
+
+### Stage Final Gate
+TASK-04 acceptance → Codex Stage Final Review (all diffs, tests, diagnostics disabled, risks) → Codex APPROVE required before merge or version freeze.
