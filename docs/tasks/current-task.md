@@ -4,22 +4,19 @@
 STAGE-01-FOUNDATION
 
 ## 状态
-REREVIEW_READY
+COMPLETE
 
 ## 当前任务
 None
 
-## 原始发现
-S01-001 至 S01-006 已由 Codex 第一次复审确认 CLOSED。
+## 审核结果
+APPROVED
 
-## 门禁修复
-STAGE-01-REREVIEW-GATE-FIX-01 已完成。
-
-## 下一执行者
-Codex
+## 合并状态
+MERGED_TO_MAIN
 
 ## 下一动作
-Stage 01 Codex Gate Re-review
+Stage 02 planning
 
-## 开发状态
-Cursor 停止开发。
+## 开发约束
+Stage 02 尚未开始，Cursor 停止开发。
