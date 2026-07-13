@@ -24,8 +24,8 @@ Cursor
 
 - `src/Anhei4Map.App/OverlayWindow.xaml`（新建）
 - `src/Anhei4Map.App/OverlayWindow.xaml.cs`（新建）
-- `src/Anhei4Map.App/RendererWindow.xaml.cs`（添加 `CaptureAndCropMapAsync` 方法）
-- `src/Anhei4Map.App/App.xaml.cs`（创建 OverlayWindow + 单次手动截图调用）
+- `src/Anhei4Map.App/RendererWindow.xaml.cs`（添加事件 + CaptureAndCropMapAsync）
+- `src/Anhei4Map.App/App.xaml.cs`（订阅事件 + 有限重试 + Overlay 管理）
 
 ## 禁止修改范围
 
@@ -36,12 +36,13 @@ Cursor
 - `tests/**`
 - `docs/design/**`
 - `*.csproj`
-- 不实现定时器（TASK-03）
+- 不实现 DispatcherTimer
+- 不实现 3 秒周期刷新（TASK-03）
 - 不实现鼠标穿透、热键、人物同步
 
 ---
 
-## 步 1：OverlayWindow.xaml
+## 步 1：OverlayWindow.xaml（修正）
 
 ```xml
 <Window x:Class="Anhei4Map.App.OverlayWindow"
@@ -53,27 +54,35 @@ Cursor
         Topmost="True"
         Width="300"
         Height="300"
-        Opacity="0.7"
-        Background="Transparent">
+        Left="20"
+        Top="20"
+        WindowStartupLocation="Manual"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Opacity="0.7">
     <Image x:Name="MapImage"
-           Stretch="UniformToFill" />
+           Stretch="Uniform" />
 </Window>
 ```
 
-**冻结属性表：**
+**冻结属性：**
 
-| 属性 | 值 | 原因 |
-|------|-----|------|
-| WindowStyle | None | 无边框叠加层 |
-| ResizeMode | NoResize | 固定尺寸 |
-| ShowInTaskbar | False | 不显示在任务栏 |
-| Topmost | True | 始终置顶 |
-| Width | 300 | 默认宽度 |
-| Height | 300 | 默认高度 |
-| Opacity | 0.7 | 默认不透明度 |
-| Background | Transparent | 透明背景 |
-| Image Name | MapImage | 供代码引用 |
-| Stretch | UniformToFill | 裁剪图片填满控件 |
+| 属性 | 值 |
+|------|-----|
+| Left | 20 |
+| Top | 20 |
+| Width | 300 |
+| Height | 300 |
+| WindowStartupLocation | Manual |
+| Topmost | True |
+| ShowInTaskbar | False |
+| WindowStyle | None |
+| ResizeMode | NoResize |
+| AllowsTransparency | True |
+| Background | Transparent |
+| Opacity | 0.7 |
+| Image Name | MapImage |
+| Stretch | **Uniform**（不裁剪地图边缘） |
 
 ---
 
@@ -94,106 +103,169 @@ public partial class OverlayWindow : Window
 }
 ```
 
-- `croppedBitmap` 在传入前必须已经 `Freeze()`（RendererWindow 中处理）
-- `BitmapSource` 可由 UI 线程安全访问
+- 传入的 `croppedBitmap` 在调用前已 `Freeze()`
 
 ---
 
-## 步 3：CaptureAndCropMapAsync 方法
+## 步 3：RendererWindow — NavigationReady 事件
 
-在 `RendererWindow.xaml.cs` 中添加：
+```csharp
+public event EventHandler? NavigationReady;
+```
+
+- 在 `OnNavigationCompleted` 中 `e.IsSuccess == true` 且 `!_isClosed` 时触发：
+  ```csharp
+  NavigationReady?.Invoke(this, EventArgs.Empty);
+  ```
+- 仅触发一次——触发后立即解除事件订阅（或在第一次触发后设置标志阻止再次触发）
+
+---
+
+## 步 4：CaptureAndCropMapAsync（冻结）
 
 ```csharp
 public async Task<BitmapSource?> CaptureAndCropMapAsync()
-{
-    var region = await TryGetMapRegionAsync();
-    if (region == null) return null;
-
-    var stream = new MemoryStream();
-    try
-    {
-        await webView.CoreWebView2.CapturePreviewAsync(
-            CoreWebView2CapturePreviewImageFormat.Png, stream);
-        stream.Position = 0;
-
-        var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-        var frame = decoder.Frames[0];
-        var bitmapWidth = frame.PixelWidth;
-        var bitmapHeight = frame.PixelHeight;
-
-        // 缩放比例
-        var scaleX = bitmapWidth / webView.ActualWidth;
-        var scaleY = bitmapHeight / webView.ActualHeight;
-
-        // 裁剪坐标
-        var cropX = (int)Math.Floor(region.Left * scaleX);
-        var cropY = (int)Math.Floor(region.Top * scaleY);
-        var cropRight = (int)Math.Ceiling((region.Left + region.Width) * scaleX);
-        var cropBottom = (int)Math.Ceiling((region.Top + region.Height) * scaleY);
-
-        // 边界保护
-        cropX = Math.Max(0, cropX);
-        cropY = Math.Max(0, cropY);
-        cropRight = Math.Min(bitmapWidth, cropRight);
-        cropBottom = Math.Min(bitmapHeight, cropBottom);
-
-        var cropWidth = cropRight - cropX;
-        var cropHeight = cropBottom - cropY;
-
-        if (cropWidth <= 0 || cropHeight <= 0) return null;
-
-        var cropped = new CroppedBitmap(frame, new Int32Rect(cropX, cropY, cropWidth, cropHeight));
-        cropped.Freeze();
-        return cropped;
-    }
-    catch
-    {
-        return null;
-    }
-    finally
-    {
-        stream.Dispose();
-    }
-}
 ```
 
-**截图规则（冻结）：**
-- 格式：PNG（`CoreWebView2CapturePreviewImageFormat.Png`）
-- MemoryStream 使用后释放（finally 块）
-- 裁剪按 floor/ceiling 确保完整覆盖
-- 无效裁剪区域（≤0）→ 返回 null
-- `CroppedBitmap.Freeze()` 后返回（跨线程安全）
-- 任何异常 → 返回 null
+**调用规则：**
+- 必须在 WebView2 所属 Dispatcher/UI 线程调用
+- 内部调用 `TryGetMapRegionAsync()` 获取 DOM 区域
+- 未就绪或无地图区域 → 返回 `null`
+
+**截图流程（冻结）：**
+1. `TryGetMapRegionAsync()` → null → 返回 null
+2. `var stream = new MemoryStream()`
+3. `await webView.CoreWebView2.CapturePreviewAsync(Png, stream)`
+4. `stream.Position = 0`
+5. `BitmapDecoder.Create(stream, PreservePixelFormat, OnLoad)`
+6. 获取 `decoder.Frames[0]`
+7. `scaleX = frame.PixelWidth / webView.ActualWidth`
+8. `scaleY = frame.PixelHeight / webView.ActualHeight`
+9. 裁剪坐标 floor/ceiling 换算
+10. 边界保护 → 无效返回 null
+11. `new CroppedBitmap(frame, new Int32Rect(...))`
+12. `cropped.Freeze()`
+13. finally `stream.Dispose()`
+
+**Bitmap 解码规则（冻结）：**
+- `BitmapCreateOptions.PreservePixelFormat`
+- `BitmapCacheOption.OnLoad`——流释放后图片仍可用
+- `decoder.Frames` 至少有一帧；否则返回 null
+- CroppedBitmap 创建后 `Freeze()`
+- MemoryStream 在 finally 中释放
+
+**裁剪公式（冻结）：**
+```
+scaleX = frame.PixelWidth / webView.ActualWidth
+scaleY = frame.PixelHeight / webView.ActualHeight
+
+cropX = Floor(region.Left * scaleX)
+cropY = Floor(region.Top * scaleY)
+cropRight = Ceiling((region.Left + region.Width) * scaleX)
+cropBottom = Ceiling((region.Top + region.Height) * scaleY)
+
+clamp(cropX, 0, frame.PixelWidth)
+clamp(cropY, 0, frame.PixelHeight)
+clamp(cropRight, 0, frame.PixelWidth)
+clamp(cropBottom, 0, frame.PixelHeight)
+```
+
+**返回 null 的条件：**
+- TryGetMapRegionAsync 返回 null
+- webView.ActualWidth <= 0 或 ActualHeight <= 0
+- CapturePreviewAsync 异常
+- decoder.Frames 为空
+- 裁剪宽度 <= 0 或高度 <= 0
+- 任何异常
+
+**所有失败返回 null，不向调用方抛异常。**
 
 ---
 
-## 步 4：App.xaml.cs 修改
+## 步 5：App.xaml.cs — 事件驱动初始截图
 
-在 `OnStartup` 中 RendererWindow 之后添加：
+### 字段
 
 ```csharp
-_overlayWindow = new OverlayWindow();
-_overlayWindow.Left = 20;
-_overlayWindow.Top = 20;
-_overlayWindow.Show();
-
-// 单次截图（用于验收），异步 fire-and-forget
-_ = Task.Run(async () =>
-{
-    await Task.Delay(5000); // 等待 WebView2 初始化和导航完成
-    var bitmap = await _rendererWindow!.CaptureAndCropMapAsync();
-    if (bitmap != null)
-    {
-        Dispatcher.Invoke(() => _overlayWindow.UpdateMapImage(bitmap));
-    }
-});
+private OverlayWindow? _overlayWindow;
+private int _initialCaptureStarted;
 ```
 
-**规则：**
-- Task.Delay(5000) 给 WebView2 足够的初始化和首次导航时间
-- Dispatcher.Invoke 确保 UI 线程更新 Image
-- 本任务只支持单次截图，不实现循环刷新
-- OverlayWindow 实例保存为 `App` 字段
+### OnStartup 中
+
+```csharp
+_rendererWindow = new RendererWindow();
+_rendererWindow.NavigationReady += OnRendererNavigationReady;
+_rendererWindow.Show();
+
+_overlayWindow = new OverlayWindow();
+// 不调用 _overlayWindow.Show() —— 等首次截图成功后
+
+base.OnStartup(e);
+```
+
+### 事件处理
+
+```csharp
+private void OnRendererNavigationReady(object? sender, EventArgs e)
+{
+    if (Interlocked.Exchange(ref _initialCaptureStarted, 1) != 0) return;
+
+    _ = StartInitialCaptureAsync();
+}
+
+private async Task StartInitialCaptureAsync()
+{
+    const int maxAttempts = 10;
+    const int delayMs = 500;
+
+    for (var attempt = 0; attempt < maxAttempts; attempt++)
+    {
+        if (attempt > 0) await Task.Delay(delayMs);
+
+        BitmapSource? bitmap;
+        Dispatcher.Invoke(() => bitmap = _rendererWindow!.CaptureAndCropMapAsync().GetAwaiter().GetResult());
+        // CaptureAndCropMapAsync 必须在 UI 线程
+
+        // 更简单的写法：直接在 UI 线程执行
+        // var bitmap = await _rendererWindow!.CaptureAndCropMapAsync();
+
+        if (bitmap != null)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                _overlayWindow!.UpdateMapImage(bitmap);
+                if (!_overlayWindow.IsVisible)
+                {
+                    _overlayWindow.Show();
+                }
+            });
+            return;
+        }
+    }
+    // 10 次全部失败 → 静默停止，不弹窗，不退出
+}
+```
+
+**注意：** `StartInitialCaptureAsync` 中的 `await` 不要与 `Dispatcher.Invoke` 冲突。如果 RendererWindow 是独立窗体，CaptureAndCropMapAsync 必须在 RendererWindow 的 Dispatcher 上执行。使用 `_rendererWindow.Dispatcher.InvokeAsync(...)` 或直接在 RendererWindow 的 Dispatcher 线程调用。
+
+**简化方案（推荐）：** `CaptureAndCropMapAsync` 内部使用 `Application.Current.Dispatcher.InvokeAsync` 确保在 UI 线程执行，或让 TASK-02 约定调用方在 UI 线程调用。
+
+---
+
+## 步 6：初始截图重试规则（冻结）
+
+| 事项 | 规则 |
+|------|------|
+| 触发源 | NavigationReady 事件 |
+| 防重复 | Interlocked.Exchange(_initialCaptureStarted, 1) |
+| 最多尝试 | 10 次 |
+| 间隔 | 500ms |
+| 成功条件 | CaptureAndCropMapAsync 返回非 null |
+| 首次成功 | Overlay.UpdateMapImage + Show（如果尚未可见） |
+| 全部失败 | 静默停止，不弹窗，不退出程序 |
+| 不重复 | 成功后不再尝试 |
+| 不循环 | 10 次后结束，不实现永久或周期刷新 |
 
 ---
 
@@ -216,12 +288,12 @@ git diff --check
 ## Git 提交信息
 
 ```
-feat: implement screenshot capture, crop, and overlay window
+feat: implement event-driven screenshot capture with crop overlay
 
-STAGE-03-TASK-02: CapturePreviewAsync PNG screenshot → crop by DOM
-coordinates scaled to bitmap dimensions → display on OverlayWindow
-at (20,20) 300x300 opacity 0.7. Single manual capture triggered 5s
-after startup. CroppedBitmap frozen for thread safety.
+STAGE-03-TASK-02: NavigationReady event drives initial capture with
+10 attempts at 500ms intervals. CaptureAndCropMapAsync uses PNG format,
+OnLoad cache, and Freeze for thread safety. OverlayWindow shown only
+after first successful crop. No periodic timer — deferred to TASK-03.
 ```
 
 ---
@@ -242,9 +314,10 @@ Files Created:
 Files Modified:
   - src/Anhei4Map.App/RendererWindow.xaml.cs
   - src/Anhei4Map.App/App.xaml.cs
-Capture Format: PNG
-Crop Scaling: bitmapPixels / webView.ActualSize
-Overlay: (20,20), 300x300, Opacity 0.7, Topmost=True
+Capture API: CaptureAndCropMapAsync() → BitmapSource?
+Trigger: NavigationReady event → Interlocked guard → 10×500ms retry
+Bitmap Decode: PreservePixelFormat + OnLoad, Freeze
+Overlay: (20,20) 300×300 Opacity=0.7, shown on first success
 Build: Release 0 errors 0 warnings
 Tests: 160/160 PASS
 ```
