@@ -119,8 +119,8 @@ WPF 项目新增 NuGet 引用 `Microsoft.Web.WebView2`（仅 App 项目）。
 | 2 | HotkeyDispatcher | TDD | ~6 |
 | 3 | IWin32Interop Interface | SCAFFOLD | 0 |
 | 4 | Win32Interop Adapter | SCAFFOLD | 0 |
-| 5 | App Single Instance + Runtime Check | SCAFFOLD | 0 |
-| 6 | WebView2 NuGet + MainWindow Shell | SCAFFOLD | 0 |
+| 5 | App Single Instance + WebView2 NuGet + Runtime Check | SCAFFOLD | 0 |
+| 6 | MainWindow Shell + WebView2 Control | SCAFFOLD | 0 |
 | 7 | WebView2 Setup + Navigation | SCAFFOLD | 0 |
 
 ## Acceptance Gate

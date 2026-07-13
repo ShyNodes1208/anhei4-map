@@ -13,7 +13,7 @@ SCAFFOLD
 READY
 
 ## 组件
-App Single Instance Mutex + WebView2 Runtime Detection
+App Single Instance Mutex + WebView2 NuGet + Runtime Detection
 
 ## 下一执行者
 Cursor
@@ -22,43 +22,35 @@ Cursor
 
 ## 设计依据
 
-[02-architecture.md:290-316](docs/design/02-architecture.md): Single Instance via Mutex
-[02-architecture.md:182-188](docs/design/02-architecture.md): WebView2 Runtime detection
-[02-architecture.md:411-466](docs/design/02-architecture.md): Startup Sequence
-
----
-
-## 前置条件
-
-WebView2 Runtime 检测需要 SDK。必须修改 App.csproj 添加 NuGet 引用。
+- [02-architecture.md:290-316](docs/design/02-architecture.md): Single Instance via Mutex
+- [02-architecture.md:182-188](docs/design/02-architecture.md): WebView2 Runtime detection
+- Stage 02 plan: TASK-05 正式负责 NuGet 引用（已从 TASK-06 前移）
 
 ---
 
 ## 允许修改的精确路径
 
-- `src/Anhei4Map.App/Anhei4Map.App.csproj`（添加 PackageReference）
-- `src/Anhei4Map.App/App.xaml.cs`（修改：添加 Mutex + Runtime 检测）
-- `src/Anhei4Map.App/App.xaml`（如需要调整，但通常不需要）
+- `src/Anhei4Map.App/Anhei4Map.App.csproj`
+- `src/Anhei4Map.App/App.xaml.cs`
 
 ## 禁止修改范围
 
 - `src/Anhei4Map.Core/**`
 - `src/Anhei4Map.Infrastructure/**`
+- `MainWindow.xaml` / `MainWindow.xaml.cs`
 - `tests/**`
 - `docs/design/**`
 - `anhei4-map.sln`
-- `MainWindow.xaml` / `MainWindow.xaml.cs`
 - 不创建 MainWindow
-- 不实现 WebView2 控件或导航
-- 不实现热键注册
-- 不实现状态机调用
+- 不创建 WebView2 控件
+- 不执行导航
 - 不实现 TASK-06+
 
 ---
 
-## NuGet 依赖
+## 步 1：NuGet 依赖
 
-在 `src/Anhei4Map.App/Anhei4Map.App.csproj` 中添加：
+在 `Anhei4Map.App.csproj` 中添加：
 
 ```xml
 <ItemGroup>
@@ -66,68 +58,65 @@ WebView2 Runtime 检测需要 SDK。必须修改 App.csproj 添加 NuGet 引用�
 </ItemGroup>
 ```
 
-（使用当前最新的 1.0.x 稳定版本，`dotnet restore` 自动解析）
+版本固定为 `1.0.2903.40`，不使用浮动版本（如 `1.0.*`）。
 
 ---
 
-## 实现 1: 单实例 Mutex
+## 步 2：单实例 Mutex
 
-修改 `src/Anhei4Map.App/App.xaml.cs`：
+### Mutex 名称
+
+```
+Global\Anhei4Map_SingleInstance
+```
+
+### 字段声明
 
 ```csharp
-using System.Windows;
+private static Mutex? _mutex;
+```
 
-namespace Anhei4Map.App;
+必须保存为 `static` 字段（非局部变量），防止 GC 回收。
 
-public partial class App : Application
+### 创建逻辑
+
+```csharp
+_mutex = new Mutex(true, @"Global\Anhei4Map_SingleInstance", out bool createdNew);
+```
+
+### createdNew == false（已有实例）
+
+```csharp
+if (!createdNew)
 {
-    private static Mutex? _mutex;
-
-    protected override void OnStartup(StartupEventArgs e)
-    {
-        _mutex = new Mutex(true, @"Global\Anhei4Map_SingleInstance", out bool createdNew);
-        if (!createdNew)
-        {
-            _mutex.Dispose();
-            _mutex = null;
-            Shutdown();
-            return;
-        }
-
-        // Runtime check goes here (see below)
-    }
-
-    protected override void OnExit(ExitEventArgs e)
-    {
-        _mutex?.ReleaseMutex();
-        _mutex?.Dispose();
-    }
+    _mutex.Dispose();
+    _mutex = null;
+    Shutdown();
+    return; // 不继续执行
 }
 ```
 
-**规则：**
-- Mutex 名称：`Global\Anhei4Map_SingleInstance`
-- 已有实例 → Dispose Mutex → Shutdown()（不弹消息框，静默退出）
-- 不创建自定义 Mutex 封装类；直接写在 App 中
-- 不记录日志（日志集成属于后续任务，当前是 SCAFFOLD）
+- 立即 Dispose 当前 Mutex 对象
+- 不调用 ReleaseMutex（当前实例不拥有该 Mutex）
+- Shutdown() 后 return，不继续 Runtime 检测
 
----
+### createdNew == true（首个实例）
 
-## 实现 2: WebView2 Runtime 检测
+- Mutex 对象保持到应用退出
+- `OnExit` 中清理
 
-在 `OnStartup` 中 Mutex 检查之后添加：
+### Mutex 构造异常
 
 ```csharp
 try
 {
-    var version = CoreWebView2Environment.GetAvailableBrowserVersionString();
-    // Runtime 已安装 → 继续
+    _mutex = new Mutex(true, @"Global\Anhei4Map_SingleInstance", out bool createdNew);
 }
-catch (WebView2RuntimeNotFoundException)
+catch (Exception ex) when (ex is UnauthorizedAccessException or WaitHandleCannotBeOpenedException or IOException)
 {
     MessageBox.Show(
-        "Microsoft Edge WebView2 Runtime 未安装。\n请从以下链接下载 Evergreen Bootstrapper 后重试：\n\nhttps://go.microsoft.com/fwlink/p/?LinkId=2124703",
-        "缺少必需组件",
+        $"无法创建应用程序互斥锁：{ex.Message}",
+        "启动失败",
         MessageBoxButton.OK,
         MessageBoxImage.Error);
     Shutdown();
@@ -135,24 +124,123 @@ catch (WebView2RuntimeNotFoundException)
 }
 ```
 
-**规则：**
-- 只用 `CoreWebView2Environment.GetAvailableBrowserVersionString()` 检测
-- 只 catch `WebView2RuntimeNotFoundException`；其他异常不吞
-- 显示中文错误消息（含下载链接）
-- 用户点确定后 Shutdown（exit code 1）
-- Runtime 存在则**不创建 Environment**（由 TASK-06 创建）
-- 不记录日志
+**冻结规则：**
+- UnauthorizedAccessException、WaitHandleCannotBeOpenedException、IOException → MessageBox + Shutdown
+- 不传播异常（App 为最外层，异常会导致未处理异常对话框）
+
+### OnExit 清理
+
+```csharp
+protected override void OnExit(ExitEventArgs e)
+{
+    try
+    {
+        _mutex?.ReleaseMutex();
+    }
+    catch
+    {
+        // 忽略——进程退出前释放尽力而为
+    }
+
+    _mutex?.Dispose();
+    _mutex = null;
+}
+```
+
+- ReleaseMutex 可能失败（已持有、已释放等），try/catch 防止 OnExit 中断
+- Dispose 始终调用
 
 ---
 
-## 启动顺序（冻结）
+## 步 3：WebView2 Runtime 检测
+
+### 前置条件
+
+Mutex 检查通过（`createdNew == true`）后立即执行。
+
+### 检测调用
+
+```csharp
+string? version;
+try
+{
+    version = CoreWebView2Environment.GetAvailableBrowserVersionString();
+}
+catch (WebView2RuntimeNotFoundException)
+{
+    // 处理见下方
+}
+```
+
+### 返回值处理
+
+`version` 可能为 null 或空——视为 Runtime 未正确安装：
+
+```csharp
+if (string.IsNullOrWhiteSpace(version))
+{
+    ShowRuntimeMissingDialog();
+    Shutdown();
+    return;
+}
+```
+
+### Runtime 缺失对话框
+
+```csharp
+private static void ShowRuntimeMissingDialog()
+{
+    MessageBox.Show(
+        "Microsoft Edge WebView2 Runtime 未安装。\n\n" +
+        "请从以下链接下载 Evergreen Bootstrapper 后重试：\n\n" +
+        "https://go.microsoft.com/fwlink/p/?LinkId=2124703",
+        "缺少必需组件 — Anhei4Map",
+        MessageBoxButton.OK,
+        MessageBoxImage.Error);
+}
+```
+
+- 标题：`"缺少必需组件 — Anhei4Map"`
+- 正文：含下载链接
+- Button：OK
+- Icon：Error
+
+### 其他异常
+
+`WebView2RuntimeNotFoundException` 之外的所有异常（如 DllNotFoundException）不吞：
+
+```csharp
+catch (Exception ex) when (ex is not WebView2RuntimeNotFoundException)
+{
+    MessageBox.Show(
+        $"WebView2 运行时检测失败：{ex.Message}",
+        "启动失败",
+        MessageBoxButton.OK,
+        MessageBoxImage.Error);
+    Shutdown();
+    return;
+}
+```
+
+---
+
+## 完整 OnStartup 顺序（冻结）
 
 ```
 OnStartup:
-  1. Mutex check  → collision → Shutdown
-  2. Runtime check → missing  → MessageBox → Shutdown
-  (3-4 by TASK-06: Create MainWindow)
+  try { new Mutex(...); }
+    catch → MessageBox → Shutdown → return
+  if (!createdNew) → Dispose → Shutdown → return
+
+  try { GetAvailableBrowserVersionString(); }
+    catch WebView2RuntimeNotFoundException → MessageBox → Shutdown → return
+    catch other → MessageBox → Shutdown → return
+  if (string.IsNullOrWhiteSpace(version)) → MessageBox → Shutdown → return
+
+  // TASK-06 continues from here: Create MainWindow
 ```
+
+**TASK-05 到此停止。不创建 MainWindow。不创建 WebView2 控件。**
 
 ---
 
@@ -180,9 +268,11 @@ git diff --check
 ```
 feat: add single instance mutex and WebView2 runtime check
 
-SCAFFOLD: App.xaml.cs now enforces single instance via named Mutex and
-checks for WebView2 Runtime availability at startup. Adds Microsoft.Web.
-WebView2 NuGet reference to App project.
+SCAFFOLD: App startup now enforces single instance via global Mutex
+and verifies WebView2 Runtime availability. Adds fixed-version
+Microsoft.Web.WebView2 NuGet reference. Mutex failure, runtime
+missing, and unexpected exceptions all show MessageBox and clean
+Shutdown. Does not create MainWindow or WebView2 control.
 ```
 
 ---
@@ -193,7 +283,7 @@ WebView2 NuGet reference to App project.
 TASK_COMPLETE
 
 Task: STAGE-02-TASK-05
-Component: App Single Instance + Runtime
+Component: App Single Instance + WebView2 NuGet + Runtime Check
 Type: SCAFFOLD
 Status: DONE
 Commit: <hash>
@@ -202,5 +292,6 @@ Files Modified:
   - src/Anhei4Map.App/App.xaml.cs
 Build: Release 0 errors 0 warnings
 Tests: 160/160 PASS
-NuGet Added: Microsoft.Web.WebView2
+NuGet Added: Microsoft.Web.WebView2 1.0.2903.40
+Mutex: Global\Anhei4Map_SingleInstance
 ```
