@@ -6,104 +6,129 @@
 - Name: Cropped HellTides Map Overlay
 - Slug: cropped-map-overlay
 - Branch: feature/03-cropped-map-overlay
-- Base: 2bada05884a21f8fbe8179171daadfd178539349 (v0.2.0-webview-shell-preview)
+- Base: 2bada05884a21f8fbe8179171daadfd178539349
 
 ## Goal
 
-HellTides.com 在后台 WebView2 中静默加载。通过 DOM 查询定位地图容器，使用 CapturePreviewAsync 截取页面并裁剪为仅地图区域。前台 WPF Image 控件显示裁剪后的地图图片，每 3 秒刷新。窗口固定在屏幕左上角 (20,20)，默认 300×300，不透明度 0.7。
+HellTides.com 在屏幕外 RendererWindow 中静默渲染。DOM 查询定位地图容器 → CapturePreviewAsync 截图 → 按实际渲染比例裁剪 → 前台 OverlayWindow 显示纯地图图片。每 3 秒 DispatcherTimer 刷新。
 
-## User Value
-
-用户看到的是干净的地图图片叠加层（非完整网页），固定在屏幕左上角，自动刷新。不遮挡游戏右上角原生小地图。
-
-## Technical Approach
-
-### Architecture
+## Architecture
 
 ```
-MainWindow (hidden, full page)          OverlayWindow (visible, Image only)
-  │ WebView2 (renders helltides.com)       │ Image control (cropped bitmap)
-  │ CapturePreviewAsync()                   │
-  │ ExecuteScriptAsync() → DOM coords      │
-  └──────────┬─────────────────────────────┘
+RendererWindow (offscreen -10000,-10000)    OverlayWindow (visible, Image only)
+  │ WebView2 (renders helltides.com)          │ Image control (cropped bitmap)
+  │ CapturePreviewAsync()                      │
+  │ ExecuteScriptAsync() → DOM coords         │
+  └──────────┬────────────────────────────────┘
              │ MapCaptureService
-             │ 1. Query DOM rect
+             │ 1. Query DOM rect + best candidate
              │ 2. CapturePreviewAsync
-             │ 3. Crop bitmap
-             │ 4. Update overlay Image
+             │ 3. Scale: bitmapPixels / webView.ActualSize
+             │ 4. Crop bitmap by scaled DOM rect
+             │ 5. Update overlay Image
 ```
 
-### DOM Query Strategy
+## Renderer Strategy
 
-HellTides.com 地图位于 `#map` 或 `canvas` 容器内。使用 `ExecuteScriptAsync` 查询：
+- 创建独立 `RendererWindow`（非原 MainWindow）
+- `ShowInTaskbar="False"`、非零尺寸（如 1280×720）
+- 移动到屏幕外：`Left=-10000, Top=-10000`
+- 窗口保持 `Show()` 状态——WebView2 需要窗口可见才能正常渲染
+- RendererWindow 加载 WebView2 并导航 helltides.com（复用 Stage 02 的初始化逻辑）
+- 原 MainWindow 弃用或改为 RendererWindow
+
+## DOM Detection Strategy
+
+多选择器候选，选择面积最大的可见元素：
 
 ```javascript
 (function() {
-  const map = document.querySelector('#map') || document.querySelector('canvas.leaflet-container');
-  if (!map) return null;
-  const rect = map.getBoundingClientRect();
-  return JSON.stringify({
-    left: rect.left,
-    top: rect.top,
-    width: rect.width,
-    height: rect.height,
-    devicePixelRatio: window.devicePixelRatio || 1
-  });
+  const selectors = ['#map', '.leaflet-container', '[class*="map"]'];
+  let best = null, bestArea = 0;
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    if (!el) continue;
+    const r = el.getBoundingClientRect();
+    const area = r.width * r.height;
+    if (area > 0 && area > bestArea) { best = el; bestArea = area; }
+  }
+  if (!best) return null;
+  const r = best.getBoundingClientRect();
+  return JSON.stringify({ left: r.left, top: r.top, width: r.width, height: r.height, dpr: window.devicePixelRatio || 1 });
 })()
 ```
 
-### Screenshot & Crop
+**降级规则：**
+- 没有候选元素 → 返回 null → 跳过本轮刷新，不关闭程序
+- width/height 必须 > 0
+- 选择器集中在方法内定义，方便网站改版后调整
 
-`CapturePreviewAsync` 截取整个 WebView2 可见区域 → `BitmapSource` → 按 DOM 坐标裁剪。
+## Crop Scaling Strategy
 
-DPI 换算：`actualPixelX = cssX * devicePixelRatio`。CapturePreviewAsync 返回物理像素，需与 CSS 像素坐标对齐。
+不使用 devicePixelRatio 作为唯一缩放依据。根据截图实际像素与 WebView2 控件尺寸计算比例：
 
-### Refresh Timer
+```
+scaleX = bitmapPixelWidth / webView.ActualWidth
+scaleY = bitmapPixelHeight / webView.ActualHeight
 
-`System.Timers.Timer` 每 3 秒触发。使用 `SemaphoreSlim(1,1)` 防并发（上一次截图未完成则跳过本次）。
+cropLeft   = (int)(domLeft   * scaleX)
+cropTop    = (int)(domTop    * scaleY)
+cropWidth  = (int)(domWidth  * scaleX)
+cropHeight = (int)(domHeight * scaleY)
+```
 
-### Default Positioning
+- devicePixelRatio 仅作为诊断日志，不参与坐标换算
+- `ActualWidth/ActualHeight` 来自 WPF 布局（非 CSS 像素）
+- 边界保护：crop 坐标不得超出截图范围
 
-Overlay 窗口固定在屏幕左上角：Left=20, Top=20, Width=300, Height=300, Opacity=0.7。
+## Refresh Strategy
+
+- `DispatcherTimer`（UI 线程）每 3 秒触发
+- `SemaphoreSlim(1,1)` 防重入——上一次截图未完成则跳过本次
+- 截图在 UI 线程异步执行（`async void` + `await`）
+- `NavigationCompleted` 之后才开始定时器
+- 定时器 tick 时检查 `webView.CoreWebView2 != null`
+
+## Default Positioning
+
+OverlayWindow：`Left=20, Top=20, Width=300, Height=300, Opacity=0.7`，`Topmost=True`，`ShowInTaskbar=False`。
 
 ## Scope
 
-- 后台 WebView2 渲染（隐藏 MainWindow）
-- DOM 查询地图容器坐标
-- CapturePreviewAsync 截图
-- 裁剪为地图区域
+- RendererWindow（屏幕外 WebView2 渲染）
+- DOM 多选择器查询 + 最大面积候选
+- CapturePreviewAsync + 按实际渲染比例裁剪
 - OverlayWindow 显示裁剪图片
-- 每 3 秒刷新
+- DispatcherTimer + SemaphoreSlim 防重入
 - 默认位置/尺寸/透明度
 
 ## Non-Goals
 
-- 鼠标穿透 (WS_EX_TRANSPARENT) — Stage 04
+- 鼠标穿透 — Stage 04
 - 全局热键 — Stage 04
-- 游戏人物位置同步 — Stage 05
-- EditOverlay 控制面板 — Stage 04
-- 读取游戏内存/进程注入 — 安全红线
+- 游戏人物位置同步 — 红线
+- EditOverlay — Stage 04
+- 读取游戏内存/进程注入 — 红线
 
 ## Risks
 
 | Risk | Mitigation |
 |------|-----------|
-| DOM 结构变化 | 多选择器回退；DOM 查询失败→跳过刷新 |
-| 截图性能 | 使用小 viewport；CapturePreviewAsync 异步 |
+| DOM 变化 | 多选择器 + 最大面积候选 + 集中管理选择器 |
 | 坐标漂移 | 每次刷新重新查询 DOM |
-| WebView2 未加载完成 | 等待 NavigationCompleted 后再启动定时器 |
+| WebView2 未加载 | NavigationCompleted 之后启动定时器 |
+| 截图重入 | SemaphoreSlim 跳过本轮 |
 
 ## Test Strategy
 
-- 单元测试：MapCaptureService 裁剪逻辑、坐标换算（纯逻辑部分）
-- SCAFFOLD：WPF Overlay 窗口
-- 手动验收：启动应用确认地图截图显示在左上角
+- 单元测试：裁剪坐标换算、候选选择逻辑（纯逻辑部分）
+- SCAFFOLD：RendererWindow + OverlayWindow
+- 手动验收：启动确认左上角显示地图截图
 
 ## Acceptance
 
-- 应用启动后 Overlay 窗口位于屏幕左上角 (20, 20)
-- 显示裁剪后地图图片（非完整网页）
+- Overlay 位于 (20,20)，300×300，Opacity 0.7
+- 显示裁剪地图图片（非完整网页）
 - 每 3 秒刷新
-- MainWindow 不可见
-- Release build 0 errors 0 warnings
-- 所有单元测试通过
+- RendererWindow 不可见（屏幕外）
+- Release build 0e0w，测试全通过

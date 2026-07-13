@@ -11,12 +11,9 @@
 
 | # | Component | Type | Status |
 |---|-----------|------|--------|
-| STAGE-03-TASK-01 | Hide MainWindow + DOM Query | IMPLEMENTATION | PENDING |
-| STAGE-03-TASK-02 | Screenshot Capture + Crop | TDD | PENDING |
-| STAGE-03-TASK-03 | OverlayWindow with Image | SCAFFOLD | PENDING |
-| STAGE-03-TASK-04 | 3s Refresh Timer + Guard | IMPLEMENTATION | PENDING |
-| STAGE-03-TASK-05 | Default Positioning + Sizing | SCAFFOLD | PENDING |
-| STAGE-03-TASK-06 | Integration & Manual Acceptance | INTEGRATION | PENDING |
+| STAGE-03-TASK-01 | RendererWindow + DOM Query | IMPLEMENTATION | PENDING |
+| STAGE-03-TASK-02 | Screenshot Crop + OverlayWindow | IMPLEMENTATION | PENDING |
+| STAGE-03-TASK-03 | 3s Refresh Guard + Integration | INTEGRATION | PENDING |
 
 ## Current
 

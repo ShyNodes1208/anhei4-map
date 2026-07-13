@@ -2,11 +2,8 @@
 
 | # | Component | Type | Dependencies |
 |---|-----------|------|-------------|
-| STAGE-03-TASK-01 | Hide MainWindow + DOM Query | IMPLEMENTATION | Stage 02 |
-| STAGE-03-TASK-02 | Screenshot Capture + Crop Service | TDD | TASK-01 |
-| STAGE-03-TASK-03 | OverlayWindow with Image | SCAFFOLD | TASK-02 |
-| STAGE-03-TASK-04 | 3s Refresh Timer + Concurrency Guard | IMPLEMENTATION | TASK-02, TASK-03 |
-| STAGE-03-TASK-05 | Default Positioning + Sizing | SCAFFOLD | TASK-03 |
-| STAGE-03-TASK-06 | Integration & Manual Acceptance | INTEGRATION | TASK 01–05 |
+| STAGE-03-TASK-01 | RendererWindow + DOM map-region detection | IMPLEMENTATION | Stage 02 |
+| STAGE-03-TASK-02 | CapturePreview crop + OverlayWindow + top-left defaults | IMPLEMENTATION | TASK-01 |
+| STAGE-03-TASK-03 | 3s refresh guard + integration + manual acceptance | INTEGRATION | TASK-01, TASK-02 |
 
-Execution order: TASK-01 → TASK-02 → TASK-03 → TASK-04 → TASK-05 → TASK-06
+Execution order: TASK-01 → TASK-02 → TASK-03
