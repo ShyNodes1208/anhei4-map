@@ -1,34 +1,34 @@
 # 当前任务
 
 ## 阶段
-STAGE-04-MAP-VIEWPORT-REDESIGN
+STAGE-04
+
+## 任务数量
+3
 
 ## 状态
-CODEX_PLAN_FINAL_REREVIEW_READY
+CODEX_SIMPLIFIED_PLAN_REVIEW_READY
 
 ## 当前任务
 None
 
-## Codex 审核历史
-- Plan 01: REJECT (7 HIGH, 3 MEDIUM — all CONFIRMED)
-- Plan 02: REJECT (3 PARTIAL, 2 UNRESOLVED, 4 new — all CONFIRMED)
-- Plan 03: REJECT (1 HIGH, 1 MEDIUM — all CONFIRMED)
-
-## 终版修订
-- 5 tasks with frozen Allowed Paths (no wildcards)
-- 01A: 7 exact files, 01B: 8 exact files
-- RendererWindow diagnostic interface frozen (2 internal methods)
-- Shared 01A/01B run contract (11 rules)
-- 30-row error contract with all columns
-- Retention algorithm with deterministic sort
-- JSON/PNG size caps
-- iframe/shadow DOM rules
-
-## 审核者
+## 下一执行者
 Codex
 
 ## 下一动作
-Codex final review of Stage 04 plan
+Codex reviews the corrected simplified Stage 04 plan
 
-## 开发约束
-Cursor BLOCKED。所有 TASK 为 PENDING。
+## 任务摘要
+
+| # | Component | Type | Status |
+|---|-----------|------|--------|
+| TASK-01 | Minimal map viewport diagnostics | DIAGNOSTIC_IMPLEMENTATION | PLANNED_NOT_READY |
+| TASK-02 | Evidence analysis and strategy | DOCS_ANALYSIS | BLOCKED_BY_TASK_01 |
+| TASK-03 | Fix + acceptance + final review | IMPLEMENTATION_ACCEPTANCE | BLOCKED_BY_TASK_02_APPROVAL |
+
+## 约束
+
+- Cursor: BLOCKED
+- User Approval: PENDING_CODEX_SIMPLIFIED_PLAN_REVIEW
+- Governance: docs/governance/project-development-rules.md
+- All tasks require Overengineering Check: PASS

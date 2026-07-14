@@ -1,8 +1,8 @@
 # Stage 04 Task Map
 
-All tasks: PENDING. Cursor BLOCKED until Codex plan approval + user approval.
+All tasks PENDING. Cursor BLOCKED until Codex simplified plan approval + user approval.
 
-**Governance:** All tasks must comply with `docs/governance/project-development-rules.md`. Each dispatch requires Minimal Implementation Check and Overengineering Check: PASS.
+Governance: `docs/governance/project-development-rules.md` applies. Each dispatch requires Minimal Implementation Check + Overengineering Check: PASS.
 
 ---
 
@@ -10,64 +10,49 @@ All tasks: PENDING. Cursor BLOCKED until Codex plan approval + user approval.
 
 - Type: DIAGNOSTIC_IMPLEMENTATION
 - Status: PLANNED_NOT_READY
-- Objective: Determine why captured map region is ~3.17:1 using minimal diagnostics.
-- Dependencies: v0.3.0 baseline (de1bb3a)
+- Objective: Determine why captured map is ~3.17:1 using minimal diagnostics.
+- Dependencies: Codex simplified plan approval + user approval
 
-### Allowed Paths (frozen — 3 files)
+### Allowed Paths
 - src/Anhei4Map.App/App.xaml.cs
 - src/Anhei4Map.App/RendererWindow.xaml.cs
 - src/Anhei4Map.App/Diagnostics/MapViewportDiagnostics.cs
 
 ### Forbidden Paths
-OverlayWindow, DomainPolicy, MainWindow, Infrastructure/**, tests/**, *.csproj, solution, NuGet. No DOM modify, resize, scroll, zoom, click, fullscreen, RendererWindow resize. No reflection. No second WebView2. No second map-selection algorithm.
-
-### Diagnostic Toggle
---diagnose-map-viewport CLI arg. Default off. One-shot per process. No persistence.
-
-### Diagnostic Output
-%LocalAppData%\Anhei4Map\diagnostics\latest\ — overwritten each run.
-- diagnostics.json
-- capture-full.png (raw CapturePreview, no crop)
-- capture-crop.png (current production crop result)
-
-### diagnostics.json Minimal Fields
-
-Page: url (no query/fragment), documentReadyState, windowInnerWidth, windowInnerHeight, devicePixelRatio, documentClientWidth, documentClientHeight, documentScrollWidth, documentScrollHeight
-
-WPF/WebView2: rendererWindowWidth, rendererWindowHeight, rendererWindowActualWidth, rendererWindowActualHeight, webViewActualWidth, webViewActualHeight, dpiScaleX, dpiScaleY, webViewZoomFactor
-
-Capture: capturePixelWidth, capturePixelHeight, scaleX, scaleY
-
-Per candidate (max 50): selector, matchIndex, tagName, id, className, parentTagName, parentId, parentClassName, left, top, right, bottom, width, height, clientWidth, clientHeight, scrollWidth, scrollHeight, display, visibility, position, overflow, transform, area, rank, selected
-
-Crop result: selectedCandidate, productionMapRegion, cropLeft, cropTop, cropRight, cropBottom, cropWidth, cropHeight, finalAspectRatio
-
-No manifest. No full DOM export. No iframe/shadow DOM. No cookie/storage/credentials.
-
-### Error Handling (minimal)
-Page not ready, WebView2 not init/closed, navigation changed, ExecuteScriptAsync fail, JSON parse/serialize fail, CapturePreviewAsync fail, Bitmap decode fail, directory create fail, file write fail. All: catch, don't exit app, don't block Overlay, no infinite retry.
-
-### Both PNGs
-Same navigation, same run, same CapturePreview data. No re-navigation.
+Other src files, tests/**, *.csproj, solution, NuGet, OverlayWindow, DomainPolicy, MainWindow, MapRegion model modifications. No DOM modify, resize, scroll, zoom, click, fullscreen, RendererWindow resize. No reflection. No second WebView2. No second map-selection or capture algorithm.
 
 ### Inputs
---diagnose-map-viewport CLI arg.
+Current RendererWindow, MapRegion query, CapturePreview/crop pipeline, `--diagnose-map-viewport` CLI arg.
 
 ### Outputs
-diagnostics/latest/ directory with 3 files.
+%LocalAppData%\Anhei4Map\diagnostics\latest\ — overwritten each run:
+- diagnostics.json (page metrics, WPF/WebView2 metrics, max 50 candidates, crop coords)
+- capture-full.png (raw CapturePreview)
+- capture-crop.png (current production crop)
 
 ### Exit Criteria
-3 files written or failures caught. Overlay not blocked. JSON readable.
+- Default off; one-shot per process; diagnostic failure does not block Overlay; does not exit app
+- No DOM modification, no new deps, no second capture/crop/map algorithm
+- diagnostics.json readable; 2 PNGs from same navigation/run
+
+### Minimal Implementation Check
+- Current Requirement: Locate root cause of ~3.17:1 map ratio
+- Minimum Change: One-time data + image output on existing capture pipeline
+- Existing Reused: MapRegion, DOM query, CapturePreview, crop, Overlay
+- New Files: MapViewportDiagnostics.cs only (DTO + JSON + 2 PNGs)
+- New Dependencies: NONE
+- Explicitly NOT implemented: multi-run, retention, manifest, capacity, iframe/shadow DOM, annotation, auto-cleanup, generic diagnostic framework
+- Overengineering Check: PASS
 
 ### Verification
-dotnet restore + build 0e0w + tests all pass + git diff --check. Manual: run with --diagnose-map-viewport, inspect diagnostics/latest/.
+dotnet restore + build 0e0w + all tests pass + git diff --check. Manual: normal start without arg → no diagnostics; with --diagnose-map-viewport → 3 files in diagnostics/latest/; Overlay still displays.
 
 ### Codex Gate
 Per-task code review after Claude acceptance.
 ### Next Executor
-Cursor (after Codex plan approval + user approval)
+Cursor after plan + user approval.
 ### User Approval
-PENDING_CODEX_SIMPLIFIED_PLAN_REVIEW
+PENDING_CODEX_SIMPLIFIED_PLAN_REVIEW.
 
 ---
 
@@ -75,46 +60,76 @@ PENDING_CODEX_SIMPLIFIED_PLAN_REVIEW
 
 - Type: DOCS_ANALYSIS
 - Status: BLOCKED_BY_TASK_01
-- Dependencies: TASK-01 completed, Codex reviewed, Claude accepted
-- Allowed: Stage 04 docs/ only
-- Forbidden: src/**, tests/**, *.csproj, solution, NuGet
+- Objective: Analyze TASK-01 output, determine root cause, select one minimal fix.
+- Dependencies: TASK-01 completed + Claude + Codex accepted
+
+### Allowed Paths
+docs/plans/stage-04-map-viewport-redesign-plan.md, docs/tasks/stage-04-tasks.md, docs/tasks/current-task.md, docs/status/project-status.md, docs/reviews/stage-04-diagnostic-analysis.md, docs/reviews/stage-04-diagnostic-review-request.md, docs/reviews/stage-04-diagnostic-adjudication.md
+
+### Forbidden
+src/**, tests/**, *.csproj, solution, NuGet, production config
 
 ### Inputs
 diagnostics.json, capture-full.png, capture-crop.png
 
 ### Outputs
-Root Cause, Selected Candidate, Why ~3.17:1 Occurs, Evidence, Rejected Hypotheses, Selected Fix, Exact Allowed Files, Expected Result, Rollback Plan, User Approval Required
+Root Cause, Selected Candidate, Why 3.17:1 Occurs, Evidence, Rejected Hypotheses, Selected Fix, Exact Allowed Files for TASK-03, Expected Result, Rollback Plan, User Approval Required
 
-### Process
-Claude analysis -> Codex review -> Claude adjudication -> User approval -> TASK-03
+### Exit Criteria
+- Evidence-based (all 3 diagnostic files from same run)
+- Single minimal fix selected
+- Codex conclusion review passed, Claude adjudicated, User approved
+- No production diff
+
+### Minimal Implementation Check
+- Current Requirement: Determine root cause and minimal fix from evidence
+- Minimum Change: Analyze 3 diagnostic files only
+- Existing Reused: NONE (no code changes)
+- New Files: Only Stage 04 analysis/review docs
+- New Dependencies: NONE
+- Overengineering Check: PASS
 
 ### Codex Gate
-Required at conclusion.
+Diagnostic conclusion must pass independent Codex review.
+### Next Executor
+Claude + Codex.
 ### User Approval
-REQUIRED before TASK-03
+REQUIRED before TASK-03 dispatch.
 
 ---
 
-## STAGE-04-TASK-03: Fix Implementation, Acceptance and Codex Final Review
+## STAGE-04-TASK-03: Fix Implementation, Acceptance and Final Review
 
 - Type: IMPLEMENTATION_ACCEPTANCE
 - Status: BLOCKED_BY_TASK_02_APPROVAL
-- Dependencies: TASK-02 approved by Codex + Claude + User
-- Allowed Paths: To be frozen by TASK-02.
-- Objective: Implement exactly one approved fix. No deviation.
+- Objective: Implement exactly one TASK-02 approved fix. No deviation.
+- Dependencies: TASK-02 Codex + Claude + User approved
+
+### Allowed Paths
+Frozen by TASK-02. No dispatch until exact paths recorded.
+
+### Forbidden
+Unapproved files, unapproved alternatives, unrelated refactoring, new NuGet, solution changes, mouse passthrough, global hotkeys, settings UI, game memory, API redraw.
 
 ### Exit Criteria
-- --diagnose-map-viewport default off
-- No diagnostic loops
-- Diagnostic failure does not block Overlay
-- Windows 10/11 WebView2 smoke test
+- Single approved fix only
+- Full vertical marked areas visible, no stretch, no core truncation
+- Normal Overlay unchanged outside approved behavior
 - Build 0e0w, all tests pass, diff check clean
 - Before/after screenshots
-- Full vertical marked areas visible
-- Ratio within TASK-02 approval
+- Windows 10/11 WebView2 smoke test
 - Codex Stage Final Review APPROVE
 
+### Minimal Implementation Check
+- Current Requirement: Display complete vertical map region
+- Minimum Change: Determined by TASK-02 evidence
+- Existing Reused: Must prefer existing RendererWindow/MapRegion/CapturePreview/Overlay
+- New Files: NONE unless TASK-02 proves necessary
+- New Dependencies: NONE unless separately user-approved
+- Explicitly NOT: mouse passthrough, hotkeys, settings UI, game memory, API redraw
+- Overengineering Check: PASS
+
 ### Codex Gate
-Cursor commit -> Claude -> Codex diff review -> Claude adjudication -> fixes -> Codex re-review -> Stage Final Review. No merge or freeze before APPROVE.
+Cursor → Claude → Codex diff review → Claude adjudicate → fix if needed → Codex re-review → User manual acceptance → Codex Stage Final Review. No merge/freeze before APPROVE.
 ### Next Executor
-Cursor (after TASK-02 approval)
+Cursor after user approval.
