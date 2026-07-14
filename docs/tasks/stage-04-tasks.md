@@ -1,6 +1,10 @@
 # Stage 04 Task Map
 
-All tasks PENDING. Cursor BLOCKED until Codex simplified plan approval + user approval.
+- Current Task: STAGE-04-TASK-02
+- TASK-01: COMPLETE. Manual Diagnostic Run: PASS.
+- TASK-02: ANALYSIS_COMPLETE_PENDING_CODEX_REREVIEW
+- TASK-03: BLOCKED_BY_TASK_02_USER_APPROVAL
+- Cursor: BLOCKED. User Approval: PENDING_CODEX_DIAGNOSTIC_REREVIEW. Next Reviewer: Codex.
 
 Governance: `docs/governance/project-development-rules.md` applies. Each dispatch requires Minimal Implementation Check + Overengineering Check: PASS.
 
@@ -53,7 +57,7 @@ Per-task code review after Claude acceptance.
 ### Next Executor
 Cursor after plan + user approval.
 ### User Approval Rule
-PENDING_CODEX_SIMPLIFIED_PLAN_REVIEW.
+PENDING_CODEX_DIAGNOSTIC_REREVIEW. (Historical: approved at plan stage.)
 
 ---
 

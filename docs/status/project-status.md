@@ -14,9 +14,11 @@
 
 ## Current
 
+- Current Task: STAGE-04-TASK-02
 - Manual Diagnostic Run: PASS
 - Root Cause: #map starts at y=417; only 303/720px visible
 - Selected Fix: Bounded single scrollIntoView + re-query + capture
 - Cursor: BLOCKED
 - User Approval: PENDING_CODEX_DIAGNOSTIC_REREVIEW
+- Next Reviewer: Codex
 - NOT merged to main
