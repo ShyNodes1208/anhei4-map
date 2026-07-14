@@ -10,9 +10,9 @@ Governance: `docs/governance/project-development-rules.md` applies. Each dispatc
 
 - Task ID: STAGE-04-TASK-01
 - Type: DIAGNOSTIC_IMPLEMENTATION
-- Status: READY
+- Status: COMPLETE
 - Objective: Determine why captured map is ~3.17:1 using minimal diagnostics.
-- Dependencies: Codex simplified plan approval + user approval
+- Dependencies: Codex simplified plan approval + user approval (MET)
 
 ### Allowed Paths
 - src/Anhei4Map.App/App.xaml.cs
@@ -61,9 +61,9 @@ PENDING_CODEX_SIMPLIFIED_PLAN_REVIEW.
 
 - Task ID: STAGE-04-TASK-02
 - Type: DOCS_ANALYSIS
-- Status: BLOCKED_BY_TASK_01
+- Status: ANALYSIS_COMPLETE_PENDING_CODEX_REREVIEW
 - Objective: Analyze TASK-01 output, determine root cause, select one minimal fix.
-- Dependencies: TASK-01 completed + Claude + Codex accepted
+- Dependencies: TASK-01 completed + Claude + Codex accepted (MET — awaiting final Codex re-approval)
 
 ### Allowed Paths
 docs/plans/stage-04-map-viewport-redesign-plan.md, docs/tasks/stage-04-tasks.md, docs/tasks/current-task.md, docs/status/project-status.md, docs/reviews/stage-04-diagnostic-analysis.md, docs/reviews/stage-04-diagnostic-review-request.md, docs/reviews/stage-04-diagnostic-adjudication.md
@@ -114,7 +114,7 @@ REQUIRED before TASK-03 dispatch.
 
 - Task ID: STAGE-04-TASK-03
 - Type: IMPLEMENTATION_ACCEPTANCE
-- Status: BLOCKED_BY_TASK_02_APPROVAL
+- Status: BLOCKED_BY_TASK_02_USER_APPROVAL
 - Objective: Implement exactly one TASK-02 approved fix. No deviation.
 - Dependencies: TASK-02 Codex + Claude + User approved
 

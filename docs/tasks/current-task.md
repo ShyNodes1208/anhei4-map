@@ -7,22 +7,25 @@ STAGE-04
 STAGE-04-TASK-02
 
 ## 任务状态
-CODEX_DIAGNOSTIC_REVIEW_READY
+ANALYSIS_COMPLETE_PENDING_CODEX_REREVIEW
 
 ## TASK-01
-COMPLETE — manual diagnostic run passed, 3 files available
+COMPLETE
 
-## 根因分析
-COMPLETE_PENDING_CODEX_REVIEW — see docs/reviews/stage-04-diagnostic-analysis.md
+## Manual Diagnostic Run
+PASS
 
-## 下一执行者
-Codex
+## TASK-02
+ANALYSIS_COMPLETE_PENDING_CODEX_REREVIEW
 
-## 下一动作
-Codex reviews diagnostic evidence and selected fix strategy
+## TASK-03
+BLOCKED_BY_TASK_02_USER_APPROVAL
 
-## Cursor
+## Cursor Dispatch
 BLOCKED
 
-## 用户批准
-PENDING_DIAGNOSTIC_REVIEW_AND_STRATEGY_APPROVAL
+## User Approval
+PENDING_CODEX_DIAGNOSTIC_REREVIEW
+
+## Next Reviewer
+Codex
