@@ -1,7 +1,7 @@
 # Stage 04 Diagnostic Evidence Analysis
 
 ## Root Cause
-The `#map` element (Leaflet container) is partially below the WebView2 viewport. Its `getBoundingClientRect().top = 417` places the map 417px below the viewport top. The 720px-tall CapturePreview only captures pixels y=0 through y=719. The crop bottom is clamped to 720, so only 720−417=303 pixels of the map are visible. The map itself is 720px tall in DOM, fully hidden below the fold.
+The `#map` element (Leaflet container) is partially below the WebView2 viewport. Its `getBoundingClientRect().top = 417` places the map 417px below the viewport top. The 720px-tall CapturePreview only captures pixels y=0 through y=719. The crop bottom is clamped to 720, so only 720−417=303 pixels of the map are visible. The remaining portion of the map extends below the current viewport — the map itself is 720px tall in DOM, and only 303 of those 720 pixels are within the visible area.
 
 ## Evidence
 - RendererWindow/WebView2: 1280×720
@@ -44,13 +44,30 @@ Build scroll-stitched full-page capture.
 - Risk: massive overengineering; rejected by Phase 03 FIX-04 experience
 
 ## Selected Fix
-**Option A**: Scroll `#map` into viewport top before capture. Single-file change, fully reuses existing pipeline, no new files/deps.
+**Option A**: Bounded single scroll of the production-selected `#map` element into viewport top before capture. Single-file change, fully reuses existing pipeline, no new files/deps.
+
+### Frozen Execution Boundaries
+1. Use the existing production query result's selector and matchIndex to locate the element.
+2. Execute exactly one `scrollIntoView({ block: "start", inline: "nearest" })` on that element per capture cycle.
+3. Wait using the existing bounded visual readiness mechanism — no new wait framework or infinite retry.
+4. Re-query MapRegion using the existing production query after the scroll.
+5. Use the re-queried actual MapRegion values — no assumptions about top==0 or fixed crop size.
+6. Re-query, CapturePreview, and crop must belong to the same navigation.
+7. Navigation change during scroll/wait → exit this path, do not retry scroll.
+8. Scroll or wait failure → no loop, no retry, no crash — reuse existing safe-failure behavior.
+9. Do not modify CapturePreview or CroppedBitmap algorithms.
+10. At most one scroll per capture cycle; no permanent scroll loop; no generic web automation.
 
 ## Expected Result
-- After scroll, MapRegion top ≈ 0
-- CapturePreview 1280×720 captures full map height (720 DOM pixels)
-- Crop ≈ 974×720, ratio ≈ 1.35:1
-- Overlay displays full vertical marked areas proportional at ≤400×250
+- Post-scroll MapRegion top must be less than pre-fix 417
+- Post-scroll cropHeight must be greater than pre-fix 303
+- finalAspectRatio must be less than pre-fix 3.217821782
+- capture-crop.png must show more vertical map content than pre-fix
+- Marked circle regions must be more complete than pre-fix
+- Map must not be stretched; no previously visible core content lost
+- If a sticky/fixed header obscures key map content, acceptance must fail
+- Exact final size and ratio determined by re-queried actual MapRegion values
+- No fixed pixel dimensions promised
 
 ## Risks
 - Tile re-render delay after scroll (mitigated by existing visual readiness check)

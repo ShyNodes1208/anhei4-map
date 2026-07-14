@@ -22,11 +22,14 @@ Diagnose why the selected map region is ~3.17:1, then apply a single approved fi
 
 No multi-run retention. No manifest. No annotation. No capacity management.
 
-## Prohibited (permanent)
-- DOM modification, resize, scroll, zoom, map interaction, window resize
+## Prohibited (permanent unless narrow exception below)
+- DOM modification, resize, arbitrary scroll, zoom, map interaction, window resize
 - Leaflet internals, JS object guessing
 - Process injection, game memory
 - API redraw, Stretch=Fill, non-proportional stretch
+
+## TASK-03 Narrow Scroll Exception
+Diagnostic evidence proves `#map` starts at y=417 in viewport. TASK-03 is permitted exactly one `scrollIntoView({block:"start"})` on the production-selected `#map` element per capture cycle. No permanent scroll loop, no generic web automation, no scrolling of other elements. All other scroll prohibitions remain.
 
 ## Codex Review Gates
 Plan Review -> Per-Task (TASK-01, TASK-03) -> TASK-02 Analysis -> Stage Final.

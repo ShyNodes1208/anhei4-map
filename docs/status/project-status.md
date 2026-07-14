@@ -1,24 +1,21 @@
 # Project status
 
-- Stage 01: COMPLETE (MERGED_TO_MAIN)
-- Stage 02: COMPLETE (v0.2.0-webview-shell-preview)
-- Stage 03: FROZEN (v0.3.0-map-overlay-preview)
-- Phase: STAGE-04-MAP-VIEWPORT-REDESIGN | Status: CODE_REVIEW_FIX_IN_PROGRESS
+- Phase: STAGE-04-MAP-VIEWPORT-REDESIGN | Status: CODEX_DIAGNOSTIC_REREVIEW_READY
 - Branch: feature/04-map-viewport-redesign
 
 ## Stage 04 Tasks
 
 | # | Type | Status |
 |---|------|--------|
-| TASK-01 | DIAGNOSTIC_IMPLEMENTATION | CODE_REVIEW_FIX |
-| FIX-01 | FIX (5 Codex findings) | **READY** |
-| TASK-02 | DOCS_ANALYSIS | BLOCKED_BY_TASK_01 |
-| TASK-03 | IMPLEMENTATION_ACCEPTANCE | BLOCKED_BY_TASK_02_APPROVAL |
+| TASK-01 | DIAGNOSTIC_IMPLEMENTATION | COMPLETE |
+| TASK-02 | DOCS_ANALYSIS | CODEX_DIAGNOSTIC_REREVIEW_READY |
+| TASK-03 | IMPLEMENTATION_ACCEPTANCE | BLOCKED_BY_TASK_02_USER_APPROVAL |
 
 ## Current
 
-- Implementation: d64846e (REJECT by Codex)
-- Confirmed Findings: 5
-- Current Task: STAGE-04-TASK-01-FIX-01
-- Next Executor: Cursor
+- Manual Diagnostic Run: PASS
+- Root Cause: #map starts at y=417; only 303/720px visible
+- Selected Fix: Bounded single scrollIntoView + re-query + capture
+- Cursor: BLOCKED
+- User Approval: PENDING_CODEX_DIAGNOSTIC_REREVIEW
 - NOT merged to main
