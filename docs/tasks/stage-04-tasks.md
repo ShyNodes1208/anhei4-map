@@ -10,7 +10,7 @@ Governance: `docs/governance/project-development-rules.md` applies. Each dispatc
 
 - Task ID: STAGE-04-TASK-01
 - Type: DIAGNOSTIC_IMPLEMENTATION
-- Status: PLANNED_NOT_READY
+- Status: READY
 - Objective: Determine why captured map is ~3.17:1 using minimal diagnostics.
 - Dependencies: Codex simplified plan approval + user approval
 
