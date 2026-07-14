@@ -502,12 +502,25 @@ public partial class RendererWindow : Window
                 return null;
             }
 
-            var diagnosticNavigationGeneration = Interlocked.Read(ref _navigationGeneration);
+            var runDiagnostics = false;
+            long diagnosticNavigationGeneration = 0;
+
+            if (_diagnosticModeEnabled &&
+                Interlocked.CompareExchange(ref _diagnosticsExecuted, 1, 0) == 0)
+            {
+                runDiagnostics = true;
+                diagnosticNavigationGeneration = Interlocked.Read(ref _navigationGeneration);
+            }
 
             var productionRegion = await TryGetProductionMapRegionAsync();
             if (productionRegion == null)
             {
                 return null;
+            }
+
+            if (runDiagnostics && !IsDiagnosticNavigationValid(diagnosticNavigationGeneration))
+            {
+                runDiagnostics = false;
             }
 
             var region = productionRegion.Region;
@@ -527,6 +540,11 @@ public partial class RendererWindow : Window
             catch
             {
                 return null;
+            }
+
+            if (runDiagnostics && !IsDiagnosticNavigationValid(diagnosticNavigationGeneration))
+            {
+                runDiagnostics = false;
             }
 
             stream.Position = 0;
@@ -586,8 +604,7 @@ public partial class RendererWindow : Window
                 var cropped = new CroppedBitmap(bitmap, new Int32Rect(left, top, cropWidth, cropHeight));
                 cropped.Freeze();
 
-                if (_diagnosticModeEnabled &&
-                    Interlocked.CompareExchange(ref _diagnosticsExecuted, 1, 0) == 0 &&
+                if (runDiagnostics &&
                     IsDiagnosticNavigationValid(diagnosticNavigationGeneration))
                 {
                     _ = RunMapViewportDiagnosticsAsync(
