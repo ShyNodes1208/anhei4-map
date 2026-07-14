@@ -1,7 +1,6 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Windows;
 using System.Windows.Media.Imaging;
 
 namespace Anhei4Map.App.Diagnostics;
@@ -21,36 +20,62 @@ public static class MapViewportDiagnostics
         "diagnostics",
         "latest");
 
-    public static void TryWrite(DiagnosticsReport report, byte[] fullPng, byte[] cropPng)
+    public static bool TryWrite(DiagnosticsReport report, byte[] fullPng, byte[] cropPng)
     {
+        var jsonFinal = Path.Combine(OutputDirectory, "diagnostics.json");
+        var fullFinal = Path.Combine(OutputDirectory, "capture-full.png");
+        var cropFinal = Path.Combine(OutputDirectory, "capture-crop.png");
+        var jsonTmp = jsonFinal + ".tmp";
+        var fullTmp = fullFinal + ".tmp";
+        var cropTmp = cropFinal + ".tmp";
+
         try
         {
             Directory.CreateDirectory(OutputDirectory);
+            DeleteIfExists(jsonFinal, fullFinal, cropFinal, jsonTmp, fullTmp, cropTmp);
 
-            var jsonPath = Path.Combine(OutputDirectory, "diagnostics.json");
-            var fullPath = Path.Combine(OutputDirectory, "capture-full.png");
-            var cropPath = Path.Combine(OutputDirectory, "capture-crop.png");
+            File.WriteAllText(jsonTmp, JsonSerializer.Serialize(report, JsonOptions));
+            File.WriteAllBytes(fullTmp, fullPng);
+            File.WriteAllBytes(cropTmp, cropPng);
 
-            File.WriteAllText(jsonPath, JsonSerializer.Serialize(report, JsonOptions));
-            File.WriteAllBytes(fullPath, fullPng);
-            File.WriteAllBytes(cropPath, cropPng);
+            File.Move(jsonTmp, jsonFinal, overwrite: true);
+            File.Move(fullTmp, fullFinal, overwrite: true);
+            File.Move(cropTmp, cropFinal, overwrite: true);
+
+            return true;
         }
         catch
         {
+            DeleteIfExists(jsonFinal, fullFinal, cropFinal, jsonTmp, fullTmp, cropTmp);
+            return false;
         }
     }
 
-    public static byte[] EncodeCroppedPng(BitmapSource source, int left, int top, int width, int height)
+    public static byte[] EncodePng(BitmapSource source)
     {
-        var cropped = new CroppedBitmap(source, new Int32Rect(left, top, width, height));
-        cropped.Freeze();
-
         var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(cropped));
+        encoder.Frames.Add(BitmapFrame.Create(source));
 
         using var stream = new MemoryStream();
         encoder.Save(stream);
         return stream.ToArray();
+    }
+
+    private static void DeleteIfExists(params string[] paths)
+    {
+        foreach (var path in paths)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch
+            {
+            }
+        }
     }
 
     public sealed class DiagnosticsReport

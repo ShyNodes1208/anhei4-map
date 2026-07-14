@@ -17,7 +17,7 @@ public partial class RendererWindow : Window
     private const string MapRegionScript = """
         (function() {
           const selectors = ['#map', '.leaflet-container', '[class*="map"]'];
-          let best = null, bestArea = 0;
+          let best = null, bestArea = 0, bestSelector = '', bestMatchIndex = -1;
           for (const sel of selectors) {
             const el = document.querySelector(sel);
             if (!el) continue;
@@ -26,11 +26,25 @@ public partial class RendererWindow : Window
             const r = el.getBoundingClientRect();
             if (r.width <= 0 || r.height <= 0) continue;
             const area = r.width * r.height;
-            if (area > bestArea) { best = el; bestArea = area; }
+            if (area > bestArea) {
+              best = el;
+              bestArea = area;
+              bestSelector = sel;
+              const nodes = document.querySelectorAll(sel);
+              bestMatchIndex = Array.prototype.indexOf.call(nodes, el);
+            }
           }
           if (!best) return null;
           const r = best.getBoundingClientRect();
-          return JSON.stringify({ left: r.left, top: r.top, width: r.width, height: r.height, dpr: window.devicePixelRatio || 1 });
+          return JSON.stringify({
+            left: r.left,
+            top: r.top,
+            width: r.width,
+            height: r.height,
+            dpr: window.devicePixelRatio || 1,
+            selector: bestSelector,
+            matchIndex: bestMatchIndex
+          });
         })()
         """;
 
@@ -121,41 +135,7 @@ public partial class RendererWindow : Window
             candidates[j].rank = j + 1;
           }
 
-          var best = null;
-          var bestArea = 0;
-          var selectedSelector = '';
-          var selectedMatchIndex = -1;
-          for (var k = 0; k < selectors.length; k++) {
-            var sel2 = selectors[k];
-            var el2 = document.querySelector(sel2);
-            if (!el2 || !isVisible(el2)) continue;
-            var r2 = el2.getBoundingClientRect();
-            var area2 = r2.width * r2.height;
-            if (area2 > bestArea) {
-              best = el2;
-              bestArea = area2;
-              selectedSelector = sel2;
-              var nodes2 = document.querySelectorAll(sel2);
-              selectedMatchIndex = Array.prototype.indexOf.call(nodes2, el2);
-            }
-          }
-
-          var selectedCandidate = null;
-          if (best) {
-            for (var m = 0; m < candidates.length; m++) {
-              if (candidates[m].selector === selectedSelector && candidates[m].matchIndex === selectedMatchIndex) {
-                candidates[m].selected = true;
-                selectedCandidate = candidates[m];
-                break;
-              }
-            }
-            if (!selectedCandidate) {
-              selectedCandidate = readCandidate(best, selectedSelector, selectedMatchIndex >= 0 ? selectedMatchIndex : 0);
-              selectedCandidate.selected = true;
-            }
-          }
-
-          return JSON.stringify({ page: page, candidates: candidates, selectedCandidate: selectedCandidate });
+          return JSON.stringify({ page: page, candidates: candidates });
         })()
         """;
 
@@ -170,6 +150,7 @@ public partial class RendererWindow : Window
     private bool _isClosed;
     private readonly bool _diagnosticModeEnabled;
     private int _diagnosticsExecuted;
+    private long _navigationGeneration;
 
     public event EventHandler? NavigationReady;
 
@@ -283,6 +264,7 @@ public partial class RendererWindow : Window
 
     private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
+        Interlocked.Increment(ref _navigationGeneration);
         _navigationCompletedSuccessfully = false;
 
         if (string.IsNullOrEmpty(e.Uri))
@@ -333,6 +315,12 @@ public partial class RendererWindow : Window
 
     public async Task<MapRegion?> TryGetMapRegionAsync()
     {
+        var result = await TryGetProductionMapRegionAsync();
+        return result?.Region;
+    }
+
+    private async Task<ProductionMapRegionResult?> TryGetProductionMapRegionAsync()
+    {
         try
         {
             if (!_webViewInitialized ||
@@ -362,7 +350,15 @@ public partial class RendererWindow : Window
             }
 
             var region = new MapRegion(dto.Left, dto.Top, dto.Width, dto.Height, dto.Dpr);
-            return IsValidRegion(region) ? region : null;
+            if (!IsValidRegion(region))
+            {
+                return null;
+            }
+
+            return new ProductionMapRegionResult(
+                region,
+                dto.Selector ?? string.Empty,
+                dto.MatchIndex);
         }
         catch (JsonException)
         {
@@ -373,6 +369,12 @@ public partial class RendererWindow : Window
             return null;
         }
     }
+
+    private bool IsDiagnosticNavigationValid(long diagnosticNavigationGeneration) =>
+        !_isClosed &&
+        _navigationCompletedSuccessfully &&
+        webView.CoreWebView2 != null &&
+        Interlocked.Read(ref _navigationGeneration) == diagnosticNavigationGeneration;
 
     private async Task<bool> IsMapVisualReadyAsync()
     {
@@ -500,11 +502,15 @@ public partial class RendererWindow : Window
                 return null;
             }
 
-            var region = await TryGetMapRegionAsync();
-            if (region == null)
+            var diagnosticNavigationGeneration = Interlocked.Read(ref _navigationGeneration);
+
+            var productionRegion = await TryGetProductionMapRegionAsync();
+            if (productionRegion == null)
             {
                 return null;
             }
+
+            var region = productionRegion.Region;
 
             if (!await IsMapVisualReadyAsync())
             {
@@ -575,14 +581,20 @@ public partial class RendererWindow : Window
                 return null;
             }
 
-            if (_diagnosticModeEnabled &&
-                Interlocked.CompareExchange(ref _diagnosticsExecuted, 1, 0) == 0)
+            try
             {
-                try
+                var cropped = new CroppedBitmap(bitmap, new Int32Rect(left, top, cropWidth, cropHeight));
+                cropped.Freeze();
+
+                if (_diagnosticModeEnabled &&
+                    Interlocked.CompareExchange(ref _diagnosticsExecuted, 1, 0) == 0 &&
+                    IsDiagnosticNavigationValid(diagnosticNavigationGeneration))
                 {
-                    await WriteDiagnosticsAsync(
-                        region,
+                    _ = RunMapViewportDiagnosticsAsync(
+                        diagnosticNavigationGeneration,
+                        productionRegion,
                         bitmap,
+                        cropped,
                         scaleX,
                         scaleY,
                         left,
@@ -593,15 +605,7 @@ public partial class RendererWindow : Window
                         cropHeight,
                         fullPngBytes);
                 }
-                catch
-                {
-                }
-            }
 
-            try
-            {
-                var cropped = new CroppedBitmap(bitmap, new Int32Rect(left, top, cropWidth, cropHeight));
-                cropped.Freeze();
                 return cropped;
             }
             catch
@@ -635,9 +639,11 @@ public partial class RendererWindow : Window
     private static bool IsFinite(double value) =>
         !double.IsNaN(value) && !double.IsInfinity(value);
 
-    private async Task WriteDiagnosticsAsync(
-        MapRegion region,
+    private async Task RunMapViewportDiagnosticsAsync(
+        long diagnosticNavigationGeneration,
+        ProductionMapRegionResult productionRegion,
         BitmapSource bitmap,
+        BitmapSource frozenCroppedBitmap,
         double scaleX,
         double scaleY,
         int left,
@@ -648,177 +654,195 @@ public partial class RendererWindow : Window
         int cropHeight,
         byte[] fullPngBytes)
     {
-        if (webView.CoreWebView2 == null)
+        try
         {
-            return;
-        }
-
-        var raw = await webView.CoreWebView2.ExecuteScriptAsync(DiagnosticMetricsScript);
-        if (string.IsNullOrWhiteSpace(raw) || raw == "null")
-        {
-            return;
-        }
-
-        var json = JsonSerializer.Deserialize<string>(raw, JsonOptions);
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return;
-        }
-
-        var metrics = JsonSerializer.Deserialize<DiagnosticMetricsJson>(json, JsonOptions);
-        if (metrics?.Page == null)
-        {
-            return;
-        }
-
-        var dpiScaleX = 1.0;
-        var dpiScaleY = 1.0;
-        var source = PresentationSource.FromVisual(this);
-        if (source?.CompositionTarget != null)
-        {
-            dpiScaleX = source.CompositionTarget.TransformToDevice.M11;
-            dpiScaleY = source.CompositionTarget.TransformToDevice.M22;
-        }
-
-        var candidates = (metrics.Candidates ?? [])
-            .Select(c => new MapViewportDiagnostics.DomCandidate
+            if (!IsDiagnosticNavigationValid(diagnosticNavigationGeneration))
             {
-                Selector = c.Selector ?? string.Empty,
-                MatchIndex = c.MatchIndex,
-                TagName = c.TagName ?? string.Empty,
-                Id = c.Id ?? string.Empty,
-                ClassName = c.ClassName ?? string.Empty,
-                ParentTagName = c.ParentTagName ?? string.Empty,
-                ParentId = c.ParentId ?? string.Empty,
-                ParentClassName = c.ParentClassName ?? string.Empty,
-                Left = c.Left,
-                Top = c.Top,
-                Right = c.Right,
-                Bottom = c.Bottom,
-                Width = c.Width,
-                Height = c.Height,
-                ClientWidth = c.ClientWidth,
-                ClientHeight = c.ClientHeight,
-                ScrollWidth = c.ScrollWidth,
-                ScrollHeight = c.ScrollHeight,
-                Display = c.Display ?? string.Empty,
-                Visibility = c.Visibility ?? string.Empty,
-                Position = c.Position ?? string.Empty,
-                Overflow = c.Overflow ?? string.Empty,
-                Transform = c.Transform ?? string.Empty,
-                Area = c.Area,
-                Rank = c.Rank,
-                Selected = c.Selected
-            })
-            .ToList();
-
-        MapViewportDiagnostics.DomCandidate? selectedCandidate = null;
-        if (metrics.SelectedCandidate != null)
-        {
-            var s = metrics.SelectedCandidate;
-            selectedCandidate = new MapViewportDiagnostics.DomCandidate
-            {
-                Selector = s.Selector ?? string.Empty,
-                MatchIndex = s.MatchIndex,
-                TagName = s.TagName ?? string.Empty,
-                Id = s.Id ?? string.Empty,
-                ClassName = s.ClassName ?? string.Empty,
-                ParentTagName = s.ParentTagName ?? string.Empty,
-                ParentId = s.ParentId ?? string.Empty,
-                ParentClassName = s.ParentClassName ?? string.Empty,
-                Left = s.Left,
-                Top = s.Top,
-                Right = s.Right,
-                Bottom = s.Bottom,
-                Width = s.Width,
-                Height = s.Height,
-                ClientWidth = s.ClientWidth,
-                ClientHeight = s.ClientHeight,
-                ScrollWidth = s.ScrollWidth,
-                ScrollHeight = s.ScrollHeight,
-                Display = s.Display ?? string.Empty,
-                Visibility = s.Visibility ?? string.Empty,
-                Position = s.Position ?? string.Empty,
-                Overflow = s.Overflow ?? string.Empty,
-                Transform = s.Transform ?? string.Empty,
-                Area = s.Area,
-                Rank = s.Rank,
-                Selected = s.Selected
-            };
-        }
-
-        var cropPngBytes = MapViewportDiagnostics.EncodeCroppedPng(bitmap, left, top, cropWidth, cropHeight);
-        var finalAspectRatio = cropHeight > 0 ? (double)cropWidth / cropHeight : 0;
-
-        var report = new MapViewportDiagnostics.DiagnosticsReport
-        {
-            Page = new MapViewportDiagnostics.PageMetrics
-            {
-                Url = metrics.Page.Url ?? string.Empty,
-                DocumentReadyState = metrics.Page.DocumentReadyState ?? string.Empty,
-                WindowInnerWidth = metrics.Page.WindowInnerWidth,
-                WindowInnerHeight = metrics.Page.WindowInnerHeight,
-                DevicePixelRatio = metrics.Page.DevicePixelRatio,
-                DocumentClientWidth = metrics.Page.DocumentClientWidth,
-                DocumentClientHeight = metrics.Page.DocumentClientHeight,
-                DocumentScrollWidth = metrics.Page.DocumentScrollWidth,
-                DocumentScrollHeight = metrics.Page.DocumentScrollHeight
-            },
-            Renderer = new MapViewportDiagnostics.RendererMetrics
-            {
-                RendererWindowWidth = Width,
-                RendererWindowHeight = Height,
-                RendererWindowActualWidth = ActualWidth,
-                RendererWindowActualHeight = ActualHeight,
-                WebViewActualWidth = webView.ActualWidth,
-                WebViewActualHeight = webView.ActualHeight,
-                DpiScaleX = dpiScaleX,
-                DpiScaleY = dpiScaleY,
-                WebViewZoomFactor = webView.ZoomFactor
-            },
-            Capture = new MapViewportDiagnostics.CaptureMetrics
-            {
-                CapturePixelWidth = bitmap.PixelWidth,
-                CapturePixelHeight = bitmap.PixelHeight,
-                ScaleX = scaleX,
-                ScaleY = scaleY
-            },
-            Candidates = candidates,
-            Result = new MapViewportDiagnostics.DiagnosticResult
-            {
-                SelectedCandidate = selectedCandidate,
-                ProductionMapRegion = new MapViewportDiagnostics.MapRegionSnapshot
-                {
-                    Left = region.Left,
-                    Top = region.Top,
-                    Width = region.Width,
-                    Height = region.Height,
-                    Dpr = region.DevicePixelRatio
-                },
-                CropLeft = left,
-                CropTop = top,
-                CropRight = right,
-                CropBottom = bottom,
-                CropWidth = cropWidth,
-                CropHeight = cropHeight,
-                FinalAspectRatio = finalAspectRatio
+                return;
             }
+
+            if (webView.CoreWebView2 == null)
+            {
+                return;
+            }
+
+            var raw = await webView.CoreWebView2.ExecuteScriptAsync(DiagnosticMetricsScript);
+            if (!IsDiagnosticNavigationValid(diagnosticNavigationGeneration))
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(raw) || raw == "null")
+            {
+                return;
+            }
+
+            var json = JsonSerializer.Deserialize<string>(raw, JsonOptions);
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return;
+            }
+
+            var metrics = JsonSerializer.Deserialize<DiagnosticMetricsJson>(json, JsonOptions);
+            if (metrics?.Page == null)
+            {
+                return;
+            }
+
+            var dpiScaleX = 1.0;
+            var dpiScaleY = 1.0;
+            var source = PresentationSource.FromVisual(this);
+            if (source?.CompositionTarget != null)
+            {
+                dpiScaleX = source.CompositionTarget.TransformToDevice.M11;
+                dpiScaleY = source.CompositionTarget.TransformToDevice.M22;
+            }
+
+            var productionSelector = productionRegion.Selector;
+            var productionMatchIndex = productionRegion.MatchIndex;
+            MapViewportDiagnostics.DomCandidate? selectedCandidate = null;
+            var candidates = new List<MapViewportDiagnostics.DomCandidate>();
+
+            foreach (var c in metrics.Candidates ?? [])
+            {
+                var selected = string.Equals(c.Selector, productionSelector, StringComparison.Ordinal) &&
+                               c.MatchIndex == productionMatchIndex;
+                var candidate = ToDomCandidate(c, selected);
+                candidates.Add(candidate);
+                if (selected)
+                {
+                    selectedCandidate = candidate;
+                }
+            }
+
+            var finalAspectRatio = cropHeight > 0 ? (double)cropWidth / cropHeight : 0;
+            var region = productionRegion.Region;
+
+            var report = new MapViewportDiagnostics.DiagnosticsReport
+            {
+                Page = new MapViewportDiagnostics.PageMetrics
+                {
+                    Url = metrics.Page.Url ?? string.Empty,
+                    DocumentReadyState = metrics.Page.DocumentReadyState ?? string.Empty,
+                    WindowInnerWidth = metrics.Page.WindowInnerWidth,
+                    WindowInnerHeight = metrics.Page.WindowInnerHeight,
+                    DevicePixelRatio = metrics.Page.DevicePixelRatio,
+                    DocumentClientWidth = metrics.Page.DocumentClientWidth,
+                    DocumentClientHeight = metrics.Page.DocumentClientHeight,
+                    DocumentScrollWidth = metrics.Page.DocumentScrollWidth,
+                    DocumentScrollHeight = metrics.Page.DocumentScrollHeight
+                },
+                Renderer = new MapViewportDiagnostics.RendererMetrics
+                {
+                    RendererWindowWidth = Width,
+                    RendererWindowHeight = Height,
+                    RendererWindowActualWidth = ActualWidth,
+                    RendererWindowActualHeight = ActualHeight,
+                    WebViewActualWidth = webView.ActualWidth,
+                    WebViewActualHeight = webView.ActualHeight,
+                    DpiScaleX = dpiScaleX,
+                    DpiScaleY = dpiScaleY,
+                    WebViewZoomFactor = webView.ZoomFactor
+                },
+                Capture = new MapViewportDiagnostics.CaptureMetrics
+                {
+                    CapturePixelWidth = bitmap.PixelWidth,
+                    CapturePixelHeight = bitmap.PixelHeight,
+                    ScaleX = scaleX,
+                    ScaleY = scaleY
+                },
+                Candidates = candidates,
+                Result = new MapViewportDiagnostics.DiagnosticResult
+                {
+                    SelectedCandidate = selectedCandidate,
+                    ProductionMapRegion = new MapViewportDiagnostics.MapRegionSnapshot
+                    {
+                        Left = region.Left,
+                        Top = region.Top,
+                        Width = region.Width,
+                        Height = region.Height,
+                        Dpr = region.DevicePixelRatio
+                    },
+                    CropLeft = left,
+                    CropTop = top,
+                    CropRight = right,
+                    CropBottom = bottom,
+                    CropWidth = cropWidth,
+                    CropHeight = cropHeight,
+                    FinalAspectRatio = finalAspectRatio
+                }
+            };
+
+            var fullBytes = fullPngBytes;
+            var frozenCrop = frozenCroppedBitmap;
+
+            await Task.Run(() =>
+            {
+                try
+                {
+                    var cropBytes = MapViewportDiagnostics.EncodePng(frozenCrop);
+                    MapViewportDiagnostics.TryWrite(report, fullBytes, cropBytes);
+                }
+                catch
+                {
+                }
+            });
+        }
+        catch
+        {
+        }
+    }
+
+    private static MapViewportDiagnostics.DomCandidate ToDomCandidate(
+        DiagnosticCandidateJson c,
+        bool selected) =>
+        new()
+        {
+            Selector = c.Selector ?? string.Empty,
+            MatchIndex = c.MatchIndex,
+            TagName = c.TagName ?? string.Empty,
+            Id = c.Id ?? string.Empty,
+            ClassName = c.ClassName ?? string.Empty,
+            ParentTagName = c.ParentTagName ?? string.Empty,
+            ParentId = c.ParentId ?? string.Empty,
+            ParentClassName = c.ParentClassName ?? string.Empty,
+            Left = c.Left,
+            Top = c.Top,
+            Right = c.Right,
+            Bottom = c.Bottom,
+            Width = c.Width,
+            Height = c.Height,
+            ClientWidth = c.ClientWidth,
+            ClientHeight = c.ClientHeight,
+            ScrollWidth = c.ScrollWidth,
+            ScrollHeight = c.ScrollHeight,
+            Display = c.Display ?? string.Empty,
+            Visibility = c.Visibility ?? string.Empty,
+            Position = c.Position ?? string.Empty,
+            Overflow = c.Overflow ?? string.Empty,
+            Transform = c.Transform ?? string.Empty,
+            Area = c.Area,
+            Rank = c.Rank,
+            Selected = selected
         };
 
-        MapViewportDiagnostics.TryWrite(report, fullPngBytes, cropPngBytes);
-    }
+    private sealed record ProductionMapRegionResult(
+        MapRegion Region,
+        string Selector,
+        int MatchIndex);
 
     private sealed record MapRegionJson(
         double Left,
         double Top,
         double Width,
         double Height,
-        [property: JsonPropertyName("dpr")] double Dpr);
+        [property: JsonPropertyName("dpr")] double Dpr,
+        string? Selector,
+        int MatchIndex);
 
     private sealed record DiagnosticMetricsJson(
         DiagnosticPageJson? Page,
-        List<DiagnosticCandidateJson>? Candidates,
-        DiagnosticCandidateJson? SelectedCandidate);
+        List<DiagnosticCandidateJson>? Candidates);
 
     private sealed record DiagnosticPageJson(
         string? Url,
