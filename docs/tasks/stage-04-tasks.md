@@ -8,6 +8,7 @@ Governance: `docs/governance/project-development-rules.md` applies. Each dispatc
 
 ## STAGE-04-TASK-01: Minimal Map Viewport Diagnostics
 
+- Task ID: STAGE-04-TASK-01
 - Type: DIAGNOSTIC_IMPLEMENTATION
 - Status: PLANNED_NOT_READY
 - Objective: Determine why captured map is ~3.17:1 using minimal diagnostics.
@@ -47,17 +48,18 @@ Current RendererWindow, MapRegion query, CapturePreview/crop pipeline, `--diagno
 ### Verification
 dotnet restore + build 0e0w + all tests pass + git diff --check. Manual: normal start without arg → no diagnostics; with --diagnose-map-viewport → 3 files in diagnostics/latest/; Overlay still displays.
 
-### Codex Gate
+### Codex Review Gate
 Per-task code review after Claude acceptance.
 ### Next Executor
 Cursor after plan + user approval.
-### User Approval
+### User Approval Rule
 PENDING_CODEX_SIMPLIFIED_PLAN_REVIEW.
 
 ---
 
 ## STAGE-04-TASK-02: Evidence Analysis and Strategy Approval
 
+- Task ID: STAGE-04-TASK-02
 - Type: DOCS_ANALYSIS
 - Status: BLOCKED_BY_TASK_01
 - Objective: Analyze TASK-01 output, determine root cause, select one minimal fix.
@@ -66,7 +68,7 @@ PENDING_CODEX_SIMPLIFIED_PLAN_REVIEW.
 ### Allowed Paths
 docs/plans/stage-04-map-viewport-redesign-plan.md, docs/tasks/stage-04-tasks.md, docs/tasks/current-task.md, docs/status/project-status.md, docs/reviews/stage-04-diagnostic-analysis.md, docs/reviews/stage-04-diagnostic-review-request.md, docs/reviews/stage-04-diagnostic-adjudication.md
 
-### Forbidden
+### Forbidden Paths
 src/**, tests/**, *.csproj, solution, NuGet, production config
 
 ### Inputs
@@ -81,6 +83,16 @@ Root Cause, Selected Candidate, Why 3.17:1 Occurs, Evidence, Rejected Hypotheses
 - Codex conclusion review passed, Claude adjudicated, User approved
 - No production diff
 
+### Verification
+- diagnostics.json parses correctly
+- capture-full.png and capture-crop.png open correctly
+- All 3 files from same application run
+- PNG pixel dimensions match diagnostics.json capture metrics
+- Root Cause has specific diagnostic fields and screenshot evidence
+- Selected Fix is a single minimal approach
+- git diff contains no src/** or tests/** changes
+- Codex completed read-only diagnostic conclusion review
+
 ### Minimal Implementation Check
 - Current Requirement: Determine root cause and minimal fix from evidence
 - Minimum Change: Analyze 3 diagnostic files only
@@ -89,17 +101,18 @@ Root Cause, Selected Candidate, Why 3.17:1 Occurs, Evidence, Rejected Hypotheses
 - New Dependencies: NONE
 - Overengineering Check: PASS
 
-### Codex Gate
+### Codex Review Gate
 Diagnostic conclusion must pass independent Codex review.
 ### Next Executor
 Claude + Codex.
-### User Approval
+### User Approval Rule
 REQUIRED before TASK-03 dispatch.
 
 ---
 
 ## STAGE-04-TASK-03: Fix Implementation, Acceptance and Final Review
 
+- Task ID: STAGE-04-TASK-03
 - Type: IMPLEMENTATION_ACCEPTANCE
 - Status: BLOCKED_BY_TASK_02_APPROVAL
 - Objective: Implement exactly one TASK-02 approved fix. No deviation.
@@ -108,7 +121,26 @@ REQUIRED before TASK-03 dispatch.
 ### Allowed Paths
 Frozen by TASK-02. No dispatch until exact paths recorded.
 
-### Forbidden
+### Inputs
+- TASK-02 approved Root Cause
+- TASK-02 approved Selected Fix
+- TASK-02 frozen Exact Allowed Files
+- Expected Result
+- Rollback Plan
+- User approval record
+
+### Outputs
+- Cursor implementation commit
+- Release build result
+- Complete test result
+- git diff --check result
+- Before/after screenshots
+- Claude acceptance result
+- Codex read-only code review result
+- User manual acceptance result
+- Codex Stage Final Review verdict
+
+### Forbidden Paths
 Unapproved files, unapproved alternatives, unrelated refactoring, new NuGet, solution changes, mouse passthrough, global hotkeys, settings UI, game memory, API redraw.
 
 ### Exit Criteria
@@ -120,6 +152,23 @@ Unapproved files, unapproved alternatives, unrelated refactoring, new NuGet, sol
 - Windows 10/11 WebView2 smoke test
 - Codex Stage Final Review APPROVE
 
+### Verification
+In Windows 10/11 PowerShell:
+- `dotnet restore anhei4-map.sln`
+- `dotnet build anhei4-map.sln -c Release --no-restore`
+- `dotnet test anhei4-map.sln -c Release --no-build`
+- `git diff --check`
+
+And confirm:
+- Build: 0 errors, 0 warnings
+- All tests pass
+- git diff --check clean
+- Windows WebView2 actual run passes
+- Full vertical marked areas visible after fix
+- Map is not stretched
+- Existing Overlay behavior is not broken
+- No unapproved functionality implemented
+
 ### Minimal Implementation Check
 - Current Requirement: Display complete vertical map region
 - Minimum Change: Determined by TASK-02 evidence
@@ -129,7 +178,9 @@ Unapproved files, unapproved alternatives, unrelated refactoring, new NuGet, sol
 - Explicitly NOT: mouse passthrough, hotkeys, settings UI, game memory, API redraw
 - Overengineering Check: PASS
 
-### Codex Gate
+### Codex Review Gate
 Cursor → Claude → Codex diff review → Claude adjudicate → fix if needed → Codex re-review → User manual acceptance → Codex Stage Final Review. No merge/freeze before APPROVE.
 ### Next Executor
 Cursor after user approval.
+### User Approval Rule
+Only the single fix explicitly approved by User during TASK-02 may be implemented. User manual acceptance and Codex Stage Final Review APPROVE required before Stage 04 completion or version freeze.
