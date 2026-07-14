@@ -68,7 +68,10 @@ public partial class App : Application
             return;
         }
 
-        _rendererWindow = new RendererWindow();
+        var diagnoseMapViewport = e.Args.Any(static arg =>
+            string.Equals(arg, "--diagnose-map-viewport", StringComparison.OrdinalIgnoreCase));
+
+        _rendererWindow = new RendererWindow(diagnoseMapViewport);
         _overlayWindow = new OverlayWindow();
         _rendererWindow.NavigationReady += OnRendererNavigationReady;
         _rendererWindow.Show();
