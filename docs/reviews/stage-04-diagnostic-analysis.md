@@ -58,6 +58,17 @@ Build scroll-stitched full-page capture.
 9. Do not modify CapturePreview or CroppedBitmap algorithms.
 10. At most one scroll per capture cycle; no permanent scroll loop; no generic web automation.
 
+### Sticky Header Manual Acceptance
+- Any fixed/sticky header occlusion must be checked manually by the user using the post-fix screenshot and Overlay.
+- No automatic sticky-header detection system. No DOM full-page scan. No header height estimation framework.
+- If key map content remains obscured by a fixed/sticky header, this fix must not pass acceptance.
+- Final crop region must use the re-queried actual MapRegion values after scroll.
+
+### Explicitly Forbidden (beyond TASK-03 scroll exception)
+- Second selector; second WebView2; multiple scrolls; scroll loops; multi-capture; tile stitching
+- Generic web automation layer; automatic sticky-header detection
+- New dependencies; modification of Overlay proportional display logic
+
 ## Expected Result
 - Post-scroll MapRegion top must be less than pre-fix 417
 - Post-scroll cropHeight must be greater than pre-fix 303
