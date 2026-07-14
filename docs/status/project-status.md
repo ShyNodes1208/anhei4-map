@@ -2,23 +2,21 @@
 
 - Phase: STAGE-04-MAP-VIEWPORT-REDESIGN
 - Branch: feature/04-map-viewport-redesign
-- Status: ANALYSIS_COMPLETE_PENDING_CODEX_REREVIEW
+- Status: IMPLEMENTATION_IN_PROGRESS
 
 ## Stage 04 Tasks
 
 | # | Type | Status |
 |---|------|--------|
 | TASK-01 | DIAGNOSTIC_IMPLEMENTATION | COMPLETE |
-| TASK-02 | DOCS_ANALYSIS | ANALYSIS_COMPLETE_PENDING_CODEX_REREVIEW |
-| TASK-03 | IMPLEMENTATION_ACCEPTANCE | BLOCKED_BY_TASK_02_USER_APPROVAL |
+| TASK-02 | DOCS_ANALYSIS | COMPLETE |
+| TASK-03 | IMPLEMENTATION_ACCEPTANCE | **READY** |
 
 ## Current
 
-- Current Task: STAGE-04-TASK-02
-- Manual Diagnostic Run: PASS
-- Root Cause: #map starts at y=417; only 303/720px visible
-- Selected Fix: Bounded single scrollIntoView + re-query + capture
-- Cursor: BLOCKED
-- User Approval: PENDING_CODEX_DIAGNOSTIC_REREVIEW
-- Next Reviewer: Codex
+- Current Task: STAGE-04-TASK-03
+- Selected Fix: ONE_BOUNDED_SCROLL_OF_PRODUCTION_MAP
+- User Approval: APPROVED
+- Codex Diagnostic Review: APPROVE
+- Next Executor: Cursor
 - NOT merged to main
