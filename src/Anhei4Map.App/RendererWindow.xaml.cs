@@ -580,6 +580,16 @@ public partial class RendererWindow : Window
                 return null;
             }
 
+            if (!await IsMapVisualReadyAsync())
+            {
+                return null;
+            }
+
+            if (!IsDiagnosticNavigationValid(captureNavigationGeneration))
+            {
+                return null;
+            }
+
             productionRegion = await TryGetProductionMapRegionAsync();
             if (productionRegion == null)
             {
@@ -593,16 +603,6 @@ public partial class RendererWindow : Window
 
             var region = productionRegion.Region;
 
-            if (!await IsMapVisualReadyAsync())
-            {
-                return null;
-            }
-
-            if (!IsDiagnosticNavigationValid(captureNavigationGeneration))
-            {
-                return null;
-            }
-
             using var stream = new MemoryStream();
             try
             {
@@ -611,6 +611,11 @@ public partial class RendererWindow : Window
                     stream);
             }
             catch
+            {
+                return null;
+            }
+
+            if (!IsDiagnosticNavigationValid(captureNavigationGeneration))
             {
                 return null;
             }
