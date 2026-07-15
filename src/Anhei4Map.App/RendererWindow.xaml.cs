@@ -139,6 +139,11 @@ public partial class RendererWindow : Window
         })()
         """;
 
+    private const double FocusLeftRatio = 0.2540;
+    private const double FocusTopRatio = 0.0000;
+    private const double FocusRightRatio = 0.6917;
+    private const double FocusBottomRatio = 0.8528;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -682,6 +687,12 @@ public partial class RendererWindow : Window
                 var cropped = new CroppedBitmap(bitmap, new Int32Rect(left, top, cropWidth, cropHeight));
                 cropped.Freeze();
 
+                var focused = TryApplyFocusCrop(cropped);
+                if (focused == null)
+                {
+                    return null;
+                }
+
                 if (runDiagnostics &&
                     IsDiagnosticNavigationValid(diagnosticNavigationGeneration))
                 {
@@ -689,7 +700,7 @@ public partial class RendererWindow : Window
                         diagnosticNavigationGeneration,
                         productionRegion,
                         bitmap,
-                        cropped,
+                        focused,
                         scaleX,
                         scaleY,
                         left,
@@ -701,7 +712,7 @@ public partial class RendererWindow : Window
                         fullPngBytes);
                 }
 
-                return cropped;
+                return focused;
             }
             catch
             {
@@ -716,6 +727,47 @@ public partial class RendererWindow : Window
 
     private static int Clamp(int value, int min, int max) =>
         Math.Max(min, Math.Min(value, max));
+
+    private static BitmapSource? TryApplyFocusCrop(BitmapSource cropped)
+    {
+        var width = cropped.PixelWidth;
+        var height = cropped.PixelHeight;
+
+        var focusLeft = (int)Math.Round(width * FocusLeftRatio);
+        var focusTop = (int)Math.Round(height * FocusTopRatio);
+        var focusRight = (int)Math.Round(width * FocusRightRatio);
+        var focusBottom = (int)Math.Round(height * FocusBottomRatio);
+
+        focusLeft = Math.Max(0, focusLeft);
+        focusTop = Math.Max(0, focusTop);
+        focusRight = Math.Min(width, focusRight);
+        focusBottom = Math.Min(height, focusBottom);
+
+        var focusWidth = focusRight - focusLeft;
+        var focusHeight = focusBottom - focusTop;
+
+        if (focusWidth <= 0 ||
+            focusHeight <= 0 ||
+            focusRight <= focusLeft ||
+            focusBottom <= focusTop)
+        {
+            return null;
+        }
+
+        try
+        {
+            var focused = new CroppedBitmap(
+                cropped,
+                new Int32Rect(focusLeft, focusTop, focusWidth, focusHeight));
+
+            focused.Freeze();
+            return focused;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     private static bool IsValidRegion(MapRegion region)
     {
