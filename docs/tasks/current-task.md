@@ -13,75 +13,62 @@ FIX
 READY
 
 ## 组件
-固定焦点区域二次裁剪
+固定焦点区域二次裁剪（红框地图区域）
 
-## Branch
-feature/04-map-viewport-redesign
-
-## Base
-3a8d20bf46d05cba50f9b8120ac1424644c095a7 (Stage 04 complete, scroll fix working)
+## 下一执行者
+Cursor
 
 ---
-
-## 问题
-
-滚动后生产裁剪结果为 975×720（#map 完整容器），包含底部黑色空白区域和左右多余边缘。用户需要的是网站红框内的中间有效地图区域。
-
-## 修复策略
-
-在现有滚动→重新查询→CapturePreview→裁剪流程上，对 975×720 的第一次裁剪结果增加一次固定焦点区域二次裁剪。
 
 ## Allowed Paths (1 file)
 - src/Anhei4Map.App/RendererWindow.xaml.cs
 
 ## Forbidden
-- App.xaml.cs, OverlayWindow, MapViewportDiagnostics, MapRegion 模型, DomainPolicy
-- 其他 src/**, tests/**, docs/**, *.csproj, *.sln
-- 不新增文件, 不新增依赖, 不新增图片拼接, 不新增自动检测系统
+App.xaml.cs, OverlayWindow, MapViewportDiagnostics, MapRegion 模型, DomainPolicy, 其他 src/**, tests/**, *.csproj, *.sln. 不新增文件/依赖/配置/自动检测/拼接。
 
 ## 实现
 
-在 `CaptureAndCropMapCoreAsync` 中首次 CroppedBitmap 创建后，增加一次固定焦点区域二次裁剪：
+在 `CaptureAndCropMapCoreAsync` 中首次 CroppedBitmap 创建后、Freeze 前插入：
 
 ```csharp
 // 首次裁剪（现有逻辑，不变）
 var cropped = new CroppedBitmap(bitmap, new Int32Rect(left, top, cropWidth, cropHeight));
 
-// 新增：固定焦点区域二次裁剪
-var focusLeft   = (int)(cropWidth  * FOCUS_LEFT_RATIO);   // 左边界比例，如 0.10
-var focusTop    = (int)(cropHeight * FOCUS_TOP_RATIO);    // 上边界比例，如 0.00
-var focusRight  = (int)(cropWidth  * FOCUS_RIGHT_RATIO);  // 右边界比例，如 0.90
-var focusBottom = (int)(cropHeight * FOCUS_BOTTOM_RATIO); // 下边界比例，如 0.75
+// 二次裁剪：固定焦点区域（红框地图）
+const double FOCUS_LEFT   = 0.2540;
+const double FOCUS_TOP    = 0.0000;
+const double FOCUS_RIGHT  = 0.6917;
+const double FOCUS_BOTTOM = 0.8528;
+
+var focusLeft   = (int)Math.Round(cropWidth  * FOCUS_LEFT);
+var focusTop    = (int)Math.Round(cropHeight * FOCUS_TOP);
+var focusRight  = (int)Math.Round(cropWidth  * FOCUS_RIGHT);
+var focusBottom = (int)Math.Round(cropHeight * FOCUS_BOTTOM);
+
+focusLeft   = Math.Max(0, focusLeft);
+focusTop    = Math.Max(0, focusTop);
+focusRight  = Math.Min(cropWidth,  focusRight);
+focusBottom = Math.Min(cropHeight, focusBottom);
 
 var focusWidth  = focusRight - focusLeft;
 var focusHeight = focusBottom - focusTop;
 
 if (focusWidth > 0 && focusHeight > 0)
 {
-    cropped = new CroppedBitmap(cropped, new Int32Rect(focusLeft, focusTop, focusWidth, focusHeight));
+    cropped = new CroppedBitmap(cropped,
+        new Int32Rect(focusLeft, focusTop, focusWidth, focusHeight));
 }
+
 cropped.Freeze();
 ```
 
-## 比例参数（需要用户根据红框实际位置调整）
-
-当前默认：
-- FOCUS_LEFT_RATIO = 0.10 （去掉左侧约 10%）
-- FOCUS_TOP_RATIO = 0.00 （从顶部开始）
-- FOCUS_RIGHT_RATIO = 0.90 （取到右侧 90%）
-- FOCUS_BOTTOM_RATIO = 0.75 （去掉底部约 25% 黑色区域）
-
-**请提供实际红框坐标或调整上述比例。**
+预期 975×720 输入 → 约 248,0,674,614 → 426×614 输出。去除底部 106px 黑色区域，横向收窄至红框地图区域。
 
 ## 禁止
-- DOM 查询红框位置（网站可能变化，当前只是固定裁剪）
-- 自动边缘检测
-- 颜色分析
-- Canvas 内容识别
-- 第二套截图、拼接、滚动
+DOM 查询、自动检测、颜色分析、Canvas 识别、第二套截图、拼接、新滚动。
 
 ## 验证
 dotnet build -c Release && dotnet test -c Release --no-build && git diff --check
 
 ## 提交
-fix: apply fixed focus-region crop to remove black area and trim sides
+fix: apply fixed focus-region crop to isolate red-box map area
