@@ -376,6 +376,47 @@ public partial class RendererWindow : Window
         webView.CoreWebView2 != null &&
         Interlocked.Read(ref _navigationGeneration) == diagnosticNavigationGeneration;
 
+    private async Task<bool> TryScrollProductionMapIntoViewAsync(
+        ProductionMapRegionResult productionRegion,
+        long captureNavigationGeneration)
+    {
+        if (!IsDiagnosticNavigationValid(captureNavigationGeneration) ||
+            string.IsNullOrEmpty(productionRegion.Selector) ||
+            webView.CoreWebView2 == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var selectorJson = JsonSerializer.Serialize(productionRegion.Selector);
+            var script = $$"""
+                (function() {
+                  var selector = {{selectorJson}};
+                  var matchIndex = {{productionRegion.MatchIndex}};
+                  var nodes = document.querySelectorAll(selector);
+                  if (matchIndex < 0 || matchIndex >= nodes.length) return false;
+                  var el = nodes[matchIndex];
+                  if (!el) return false;
+                  el.scrollIntoView({ block: 'start', inline: 'nearest' });
+                  return true;
+                })()
+                """;
+
+            var result = await webView.CoreWebView2.ExecuteScriptAsync(script);
+            if (!IsDiagnosticNavigationValid(captureNavigationGeneration))
+            {
+                return false;
+            }
+
+            return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private async Task<bool> IsMapVisualReadyAsync()
     {
         if (!Dispatcher.CheckAccess())
@@ -504,12 +545,13 @@ public partial class RendererWindow : Window
 
             var runDiagnostics = false;
             long diagnosticNavigationGeneration = 0;
+            var captureNavigationGeneration = Interlocked.Read(ref _navigationGeneration);
 
             if (_diagnosticModeEnabled &&
                 Interlocked.CompareExchange(ref _diagnosticsExecuted, 1, 0) == 0)
             {
                 runDiagnostics = true;
-                diagnosticNavigationGeneration = Interlocked.Read(ref _navigationGeneration);
+                diagnosticNavigationGeneration = captureNavigationGeneration;
             }
 
             var productionRegion = await TryGetProductionMapRegionAsync();
@@ -523,9 +565,40 @@ public partial class RendererWindow : Window
                 runDiagnostics = false;
             }
 
+            if (!IsDiagnosticNavigationValid(captureNavigationGeneration))
+            {
+                return null;
+            }
+
+            if (!await TryScrollProductionMapIntoViewAsync(productionRegion, captureNavigationGeneration))
+            {
+                return null;
+            }
+
+            if (!IsDiagnosticNavigationValid(captureNavigationGeneration))
+            {
+                return null;
+            }
+
+            productionRegion = await TryGetProductionMapRegionAsync();
+            if (productionRegion == null)
+            {
+                return null;
+            }
+
+            if (!IsDiagnosticNavigationValid(captureNavigationGeneration))
+            {
+                return null;
+            }
+
             var region = productionRegion.Region;
 
             if (!await IsMapVisualReadyAsync())
+            {
+                return null;
+            }
+
+            if (!IsDiagnosticNavigationValid(captureNavigationGeneration))
             {
                 return null;
             }
