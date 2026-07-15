@@ -1,87 +1,78 @@
 # 当前任务
 
 ## 阶段
-STAGE-04
+STAGE-05
 
 ## 任务编号
-STAGE-04-TASK-04-DISMISS-BOTTOM-COVER
+STAGE-05-TASK-01-MOUSE-CLICK-THROUGH
 
 ## 类型
-FIX
+IMPLEMENTATION
 
 ## 状态
 READY
 
 ## 组件
-关闭/隐藏底部固定覆盖层
+OverlayWindow 鼠标穿透 (WS_EX_TRANSPARENT + WS_EX_NOACTIVATE)
 
 ## 下一执行者
 Cursor
 
 ---
 
-## Allowed Path (1 file)
-- src/Anhei4Map.App/RendererWindow.xaml.cs
+## Allowed Paths (2 files)
+- src/Anhei4Map.App/OverlayWindow.xaml.cs
+- src/Anhei4Map.App/Win32Native.cs
 
 ## Forbidden
-OverlayWindow, App.xaml.cs, MapViewportDiagnostics, 其他 src/**, tests/**, *.csproj. New Files: NONE. New Dependencies: NONE.
+App.xaml.cs, RendererWindow, MapViewportDiagnostics, MapRegion, DomainPolicy, 其他 src/**, tests/**, *.csproj. New Files: NONE. New Dependencies: NONE.
 
 ---
 
 ## 实现
 
-新增一个私有方法：
+### Win32Native.cs — 添加 1 行常量
 
 ```csharp
-private async Task<bool> TryDismissBottomCoverAsync()
+public const uint WS_EX_NOACTIVATE = 0x08000000;
 ```
 
-### 覆盖层识别边界（冻结）
+### OverlayWindow.xaml.cs — 添加 SourceInitialized
 
-在现有 WebView DOM 中查找满足以下**全部条件**的元素：
+```csharp
+using System.Windows.Interop;
 
-1. `getComputedStyle(el).position === "fixed" || "sticky"`
-2. `rect.bottom >= window.innerHeight - 120`（与视口底部相交 120px 以内）
-3. `rect.width >= window.innerWidth * 0.6`（覆盖视口大部分宽度）
-4. `rect.height >= 60 && rect.height <= 200`（底部横条范围）
-5. 元素 tagName 不是 `#map`、不包含 `leaflet-` class、不在已知的 Leaflet 控件面板中
+public OverlayWindow()
+{
+    InitializeComponent();
+    SourceInitialized += OnSourceInitialized;
+}
 
-### 处理策略
+private void OnSourceInitialized(object? sender, EventArgs e)
+{
+    var hwnd = new WindowInteropHelper(this).Handle;
+    var win32 = new Win32Interop();
 
-对找到的第一个匹配元素：
-1. 优先查找其内部的可点击关闭按钮（`button, [role=button], [aria-label*=close], .close, [class*=dismiss]`）
-2. 找到关闭按钮 → 执行 `closeButton.click()`
-3. 无关闭按钮 → 对该容器执行 `el.style.display = "none"`
+    var exStyle = win32.GetWindowLongPtr(hwnd, Win32Native.GWL_EXSTYLE);
+    var newExStyle = new IntPtr(
+        exStyle.ToInt64() | Win32Native.WS_EX_TRANSPARENT | Win32Native.WS_EX_NOACTIVATE);
+    win32.SetWindowLongPtr(hwnd, Win32Native.GWL_EXSTYLE, newExStyle);
 
-### 约束
-
-- 每个 capture cycle 最多执行一次
-- 不使用固定鼠标屏幕坐标
-- 不建立通用广告拦截系统
-- 不扫描或隐藏所有 fixed 元素
-- 不隐藏 #map、Leaflet 控件、Zone Select、Map Filter、OverlayWindow
-- 失败 → 返回 false，不崩溃，不循环，不影响现有流程
-
-### 执行顺序
-
+    win32.SetWindowPos(hwnd, Win32Native.HWND_TOPMOST, 0,0,0,0,
+        Win32Native.SWP_NOACTIVATE | Win32Native.SWP_NOMOVE | Win32Native.SWP_NOSIZE | Win32Native.SWP_SHOWWINDOW);
+}
 ```
-MAP_REGION 初查 → NAV CHECK
-→ SCROLL_INTO_VIEW → NAV CHECK
-→ TryDismissBottomCoverAsync (一次)
-→ NAV CHECK
-→ IsMapVisualReadyAsync (现有有界等待)
-→ MAP_REGION 重查 → NAV CHECK
-→ CapturePreview → NAV CHECK
-→ CroppedBitmap (完整 975×720) → Freeze
-→ Overlay (600×375, 等比例 ~508×375)
-```
+
+WS_EX_TRANSPARENT (0x20) 已存在于 Win32Native。WPF AllowsTransparency=True 已设置 WS_EX_LAYERED，添加 WS_EX_TRANSPARENT 后鼠标消息穿透到底层窗口。
+
+## 保持
+Topmost, 位置, 600×375, 等比例, 透明度, 地图/WebView2/diagnostics
+
+## 禁止
+开关, 热键, 设置, 托盘, 拖动, 缩放, 配置, 样式服务, 轮询, 后台线程
 
 ## 验证
-```powershell
 dotnet build -c Release && dotnet test -c Release --no-build && git diff --check
-```
 
 ## 提交
-```
-fix: dismiss bottom fixed cover before map capture
-```
+feat: enable mouse click-through on overlay window
