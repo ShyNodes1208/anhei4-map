@@ -1,0 +1,46 @@
+# Stage 04: Map Viewport Redesign
+
+## Stage Info
+- Stage: STAGE-04 | Name: Map Viewport Redesign
+- Slug: map-viewport-redesign | Branch: feature/04-map-viewport-redesign
+- Base: de1bb3a1971c9f4a2fe9f1075d432bbe603c818b (v0.3.0)
+
+## Known Limitation
+Captured map region ~3.17:1 ratio. Vertical content cut off.
+
+## Goal
+Diagnose why the selected map region is ~3.17:1, then apply a single approved fix.
+
+## Diagnostic Toggle
+`--diagnose-map-viewport` CLI arg. Default off. One-shot per process. No persistence.
+
+## Diagnostic Output
+`%LocalAppData%\Anhei4Map\diagnostics\latest\`
+- diagnostics.json (overwritten each run)
+- capture-full.png (overwritten each run)
+- capture-crop.png (overwritten each run)
+
+No multi-run retention. No manifest. No annotation. No capacity management.
+
+## Prohibited (permanent unless narrow exception below)
+- DOM modification, resize, arbitrary scroll, zoom, map interaction, window resize
+- Leaflet internals, JS object guessing
+- Process injection, game memory
+- API redraw, Stretch=Fill, non-proportional stretch
+
+## TASK-03 Narrow Scroll Exception
+Diagnostic evidence proves `#map` starts at y=417 in viewport. TASK-03 is permitted exactly one `scrollIntoView({block:"start"})` on the production-selected `#map` element per capture cycle. No permanent scroll loop, no generic web automation, no scrolling of other elements. All other scroll prohibitions remain.
+
+## Codex Review Gates
+Plan Review -> Per-Task (TASK-01, TASK-03) -> TASK-02 Analysis -> Stage Final.
+
+## Tasks (3)
+- STAGE-04-TASK-01: Minimal map viewport diagnostics (3 files, overwrite latest)
+- STAGE-04-TASK-02: Evidence analysis and strategy approval
+- STAGE-04-TASK-03: Fix implementation, acceptance, Codex final review
+
+## Governance
+All tasks must comply with `docs/governance/project-development-rules.md`. Every dispatch requires Minimal Implementation Check and Overengineering Check: PASS.
+
+## Windows-Only
+Windows 10/11, PowerShell, .NET/WPF/WebView2. No Linux/WSL.

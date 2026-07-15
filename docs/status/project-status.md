@@ -1,31 +1,22 @@
-﻿# Project status
+# Project status
 
-- Stage 01: COMPLETE (MERGED_TO_MAIN)
-- Stage 02: COMPLETE (v0.2.0-webview-shell-preview)
-- Stage 03: FROZEN (v0.3.0-map-overlay-preview)
-- Phase: STAGE-04-MAP-VIEWPORT-REDESIGN | Status: CODEX_SIMPLIFIED_PLAN_REVIEW_READY
+- Phase: STAGE-04-MAP-VIEWPORT-REDESIGN | Status: COMPLETE
 - Branch: feature/04-map-viewport-redesign
-- Base: de1bb3a1971c9f4a2fe9f1075d432bbe603c818b
+- Final Implementation: b25fc591601d81623cd4252662d1c47ac40f3e6d
 
-## Codex Review History
-
-| Review | Verdict |
-|--------|---------|
-| Plan 01 | REJECT (10 findings) |
-| Plan 02 | REJECT (9 findings) |
-| Plan 03 | REJECT (2 findings) |
-| Simplified | PENDING |
-
-## Stage 04 Tasks (3 tasks)
+## Stage 04 Tasks — All Complete
 
 | # | Type | Status |
 |---|------|--------|
-| TASK-01 | DIAGNOSTIC_IMPLEMENTATION | PLANNED_NOT_READY |
-| TASK-02 | DOCS_ANALYSIS | BLOCKED_BY_TASK_01 |
-| TASK-03 | IMPLEMENTATION_ACCEPTANCE | BLOCKED_BY_TASK_02_APPROVAL |
+| TASK-01 | DIAGNOSTIC_IMPLEMENTATION | COMPLETE |
+| TASK-02 | DOCS_ANALYSIS | COMPLETE |
+| TASK-03 | IMPLEMENTATION_ACCEPTANCE | COMPLETE |
+| TASK-04-DISMISS | FIX | COMPLETE |
 
-## Current
+## Results
 
-- Current Task: None (CODEX_SIMPLIFIED_PLAN_REVIEW_READY)
-- Cursor: BLOCKED
-- NOT merged to main
+- Manual Acceptance: PASS
+- Full map displayed, bottom cover removed, aspect ratio preserved
+- Overlay max 600×375
+- Build: 0e0w | Tests: 160/160
+- Next Action: MERGE_TO_MAIN
