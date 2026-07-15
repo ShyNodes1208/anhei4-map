@@ -4,16 +4,16 @@
 STAGE-06
 
 ## 任务编号
-STAGE-06-TASK-02-ENLARGE-OVERLAY
+STAGE-06-TASK-03-SHRINK-OVERLAY
 
 ## 类型
-IMPLEMENTATION
+FIX
 
 ## 状态
 READY
 
 ## 组件
-Overlay 显示尺寸放大至 900×563
+Overlay 显示尺寸缩小至 630×394
 
 ## 下一执行者
 Cursor
@@ -30,19 +30,19 @@ App.xaml.cs, RendererWindow, Win32Native, MapViewportDiagnostics, 其他 src/**,
 
 ## 实现
 
-修改 OverlayWindow.xaml.cs 的两行常量：
+修改 OverlayWindow.xaml.cs 两行常量：
 
 ```csharp
 // 改前:
-private const double MaxOverlayWidth = 600;
-private const double MaxOverlayHeight = 375;
-
-// 改后:
 private const double MaxOverlayWidth = 900;
 private const double MaxOverlayHeight = 563;
+
+// 改后:
+private const double MaxOverlayWidth = 630;
+private const double MaxOverlayHeight = 394;
 ```
 
-UpdateMapImage 的等比例缩放逻辑不变。975×720 地图 → scale=min(900/975,563/720)=min(0.923,0.782)=0.782 → ~762×563.
+UpdateMapImage 的等比例缩放逻辑不变。975×720 地图 → scale=min(630/975,394/720)=min(0.646,0.547)=0.547 → ~533×394.
 
 ## 保持
 整张地图、等比例、裁剪、鼠标穿透、HH:01 刷新、底部遮挡、diagnostics
@@ -54,7 +54,7 @@ dotnet build -c Release && dotnet test -c Release --no-build && git diff --check
 
 ## 提交
 ```
-feat: enlarge overlay to 900x563
+fix: shrink overlay to 630x394
 ```
 
 ## Overengineering Check
