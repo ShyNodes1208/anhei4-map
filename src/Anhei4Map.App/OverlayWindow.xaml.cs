@@ -6,8 +6,8 @@ namespace Anhei4Map.App;
 
 public partial class OverlayWindow : Window
 {
-    private const double MaxOverlayWidth = 600;
-    private const double MaxOverlayHeight = 375;
+    private const double MaxOverlayWidth = 900;
+    private const double MaxOverlayHeight = 563;
 
     public OverlayWindow()
     {
