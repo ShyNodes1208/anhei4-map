@@ -679,6 +679,36 @@ public partial class RendererWindow : Window
         }
     }
 
+    public async Task<bool> ReloadPageAsync()
+    {
+        if (_isClosed ||
+            webView.CoreWebView2 == null ||
+            !_navigationCompletedSuccessfully)
+        {
+            return false;
+        }
+
+        var tcs = new TaskCompletionSource<bool>();
+
+        void OnNavCompleted(object? s, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            webView.CoreWebView2!.NavigationCompleted -= OnNavCompleted;
+            tcs.TrySetResult(e.IsSuccess);
+        }
+
+        webView.CoreWebView2.NavigationCompleted += OnNavCompleted;
+        webView.CoreWebView2.Reload();
+
+        var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(30)));
+        if (completed != tcs.Task)
+        {
+            webView.CoreWebView2.NavigationCompleted -= OnNavCompleted;
+            return false;
+        }
+
+        return await tcs.Task;
+    }
+
     public async Task<BitmapSource?> CaptureAndCropMapAsync()
     {
         if (!Dispatcher.CheckAccess())

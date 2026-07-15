@@ -173,10 +173,21 @@ public partial class App : Application
         _hourlyRefreshInProgress = true;
         try
         {
-            var bitmap = await _rendererWindow!.CaptureAndCropMapAsync();
+            if (_rendererWindow == null || _overlayWindow == null)
+            {
+                return;
+            }
+
+            var reloadOk = await _rendererWindow.ReloadPageAsync();
+            if (!reloadOk)
+            {
+                return;
+            }
+
+            var bitmap = await _rendererWindow.CaptureAndCropMapAsync();
             if (bitmap != null)
             {
-                _overlayWindow!.UpdateMapImage(bitmap);
+                _overlayWindow.UpdateMapImage(bitmap);
             }
         }
         catch
