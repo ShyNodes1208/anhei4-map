@@ -1,6 +1,7 @@
 ﻿using System.IO;
 using System.Threading;
 using System.Windows;
+using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 
 namespace Anhei4Map.App;
@@ -14,6 +15,9 @@ public partial class App : Application
     private RendererWindow? _rendererWindow;
     private OverlayWindow? _overlayWindow;
     private int _initialCaptureStarted;
+
+    private DispatcherTimer? _hourlyRefreshTimer;
+    private bool _hourlyRefreshInProgress;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -108,6 +112,7 @@ public partial class App : Application
                     _overlayWindow.Show();
                 }
 
+                ScheduleNextHourlyRefresh();
                 return;
             }
 
@@ -118,8 +123,81 @@ public partial class App : Application
         }
     }
 
+    private void EnsureHourlyRefreshTimer()
+    {
+        if (_hourlyRefreshTimer != null)
+        {
+            return;
+        }
+
+        _hourlyRefreshTimer = new DispatcherTimer();
+        _hourlyRefreshTimer.Tick += OnHourlyRefreshTick;
+    }
+
+    private void ScheduleNextHourlyRefresh()
+    {
+        EnsureHourlyRefreshTimer();
+
+        _hourlyRefreshTimer!.Stop();
+
+        var now = DateTime.Now;
+        var next = new DateTime(
+            now.Year,
+            now.Month,
+            now.Day,
+            now.Hour,
+            1,
+            0);
+
+        if (next <= now)
+        {
+            next = next.AddHours(1);
+        }
+
+        var delay = next - now;
+        var intervalMs = Math.Max(delay.TotalMilliseconds, 1);
+        _hourlyRefreshTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
+        _hourlyRefreshTimer.Start();
+    }
+
+    private async void OnHourlyRefreshTick(object? sender, EventArgs e)
+    {
+        _hourlyRefreshTimer?.Stop();
+
+        if (_hourlyRefreshInProgress)
+        {
+            ScheduleNextHourlyRefresh();
+            return;
+        }
+
+        _hourlyRefreshInProgress = true;
+        try
+        {
+            var bitmap = await _rendererWindow!.CaptureAndCropMapAsync();
+            if (bitmap != null)
+            {
+                _overlayWindow!.UpdateMapImage(bitmap);
+            }
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _hourlyRefreshInProgress = false;
+            ScheduleNextHourlyRefresh();
+        }
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
+        if (_hourlyRefreshTimer != null)
+        {
+            _hourlyRefreshTimer.Stop();
+            _hourlyRefreshTimer.Tick -= OnHourlyRefreshTick;
+            _hourlyRefreshTimer = null;
+        }
+
         try
         {
             _mutex?.ReleaseMutex();
