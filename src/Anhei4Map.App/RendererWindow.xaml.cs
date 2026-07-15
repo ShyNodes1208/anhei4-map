@@ -417,6 +417,166 @@ public partial class RendererWindow : Window
         }
     }
 
+    private async Task<bool> TryDismissBottomCoverAsync()
+    {
+        if (!_webViewInitialized ||
+            !_navigationCompletedSuccessfully ||
+            _isClosed ||
+            webView.CoreWebView2 == null)
+        {
+            return false;
+        }
+
+        const string script = """
+            (function() {
+              function className(el) {
+                return (el.className && typeof el.className === 'string') ? el.className : '';
+              }
+
+              function isVisible(el) {
+                var style = getComputedStyle(el);
+                if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) <= 0) return false;
+                var r = el.getBoundingClientRect();
+                return r.width > 0 && r.height > 0;
+              }
+
+              function isMapOrAncestor(el, mapEl) {
+                if (!mapEl) return true;
+                if (el === mapEl) return true;
+                var node = mapEl.parentElement;
+                while (node) {
+                  if (node === el) return true;
+                  node = node.parentElement;
+                }
+                if (mapEl.contains(el)) return true;
+                return false;
+              }
+
+              function hasLeafletInChain(el) {
+                var node = el;
+                while (node && node !== document.documentElement) {
+                  var cls = className(node).toLowerCase();
+                  var id = (node.id || '').toLowerCase();
+                  if (id === 'map' || cls.indexOf('leaflet') >= 0) return true;
+                  node = node.parentElement;
+                }
+                return false;
+              }
+
+              function isLeafletUi(el) {
+                var node = el;
+                while (node && node !== document.body) {
+                  var cls = className(node).toLowerCase();
+                  if (/\bleaflet-(control|zoom|popup|marker|tooltip)\b/.test(cls)) return true;
+                  if (cls.indexOf('leaflet') >= 0 && /\b(marker|icon|control|popup|tooltip)\b/.test(cls)) return true;
+                  node = node.parentElement;
+                }
+                return false;
+              }
+
+              function isZoneSelectOrMapFilter(el) {
+                var node = el;
+                while (node && node !== document.body) {
+                  var hay = ((node.id || '') + ' ' + className(node)).toLowerCase();
+                  if (/zone[\s_-]*select|map[\s_-]*filter|zoneselect|mapfilter/.test(hay)) return true;
+                  node = node.parentElement;
+                }
+                var r = el.getBoundingClientRect();
+                if (r.left >= window.innerWidth * 0.45 && r.width < window.innerWidth * 0.6) {
+                  var label = ((el.id || '') + ' ' + className(el)).toLowerCase();
+                  if (/zone|filter|select|sidebar|panel/.test(label)) return true;
+                }
+                return false;
+              }
+
+              function isNormalPageBody(el) {
+                var tag = (el.tagName || '').toUpperCase();
+                return tag === 'HTML' || tag === 'BODY' || tag === 'MAIN' || tag === 'ARTICLE';
+              }
+
+              function intersectsMapBottom(el, mapEl) {
+                var er = el.getBoundingClientRect();
+                var mr = mapEl.getBoundingClientRect();
+                var mapBottomTop = mr.bottom - Math.min(200, mr.height);
+                var horiz = er.left < mr.right && er.right > mr.left;
+                var vert = er.top < mr.bottom && er.bottom > mapBottomTop;
+                return horiz && vert;
+              }
+
+              function isBottomCoverCandidate(el, mapEl) {
+                if (!isVisible(el)) return false;
+                if (isMapOrAncestor(el, mapEl)) return false;
+                if (hasLeafletInChain(el)) return false;
+                if (isLeafletUi(el)) return false;
+                if (isZoneSelectOrMapFilter(el)) return false;
+                if (isNormalPageBody(el)) return false;
+
+                var style = getComputedStyle(el);
+                var pos = style.position;
+                if (pos !== 'fixed' && pos !== 'sticky') return false;
+
+                var r = el.getBoundingClientRect();
+                if (r.bottom < window.innerHeight - 120) return false;
+                if (r.width < window.innerWidth * 0.6) return false;
+                if (r.height < 60 || r.height > 200) return false;
+                if (!intersectsMapBottom(el, mapEl)) return false;
+                return true;
+              }
+
+              function findCloseButton(container) {
+                var nodes = container.querySelectorAll(
+                  'button, [role="button"], .close, [class*="dismiss"], [aria-label*="close" i], [title*="close" i]');
+                for (var i = 0; i < nodes.length; i++) {
+                  var btn = nodes[i];
+                  if (!isVisible(btn)) continue;
+                  var label = ((btn.getAttribute('aria-label') || '') + ' ' + (btn.getAttribute('title') || '')).toLowerCase();
+                  if (/close|dismiss|关闭/.test(label)) return btn;
+                  var text = (btn.textContent || '').trim();
+                  if (text === '×' || text === '✕' || text === '✖') return btn;
+                  var cls = className(btn).toLowerCase();
+                  if (/\bclose\b/.test(cls) || /\bdismiss\b/.test(cls)) return btn;
+                }
+                return null;
+              }
+
+              var mapEl = document.querySelector('#map');
+              if (!mapEl) return false;
+
+              var cover = null;
+              var elements = document.body.querySelectorAll('*');
+              for (var j = 0; j < elements.length; j++) {
+                if (isBottomCoverCandidate(elements[j], mapEl)) {
+                  cover = elements[j];
+                  break;
+                }
+              }
+
+              if (!cover) return false;
+
+              var closeBtn = findCloseButton(cover);
+              if (closeBtn) {
+                closeBtn.click();
+              }
+
+              if (!closeBtn || isVisible(cover)) {
+                cover.style.setProperty('display', 'none', 'important');
+              }
+
+              return true;
+            })()
+            """;
+
+        try
+        {
+            var result = await webView.CoreWebView2.ExecuteScriptAsync(script);
+            return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private async Task<bool> IsMapVisualReadyAsync()
     {
         if (!Dispatcher.CheckAccess())
@@ -574,6 +734,13 @@ public partial class RendererWindow : Window
             {
                 return null;
             }
+
+            if (!IsDiagnosticNavigationValid(captureNavigationGeneration))
+            {
+                return null;
+            }
+
+            _ = await TryDismissBottomCoverAsync();
 
             if (!IsDiagnosticNavigationValid(captureNavigationGeneration))
             {
