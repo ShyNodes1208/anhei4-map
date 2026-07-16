@@ -67,15 +67,20 @@ public partial class OverlayWindow : Window
         var displayWidth = bitmap.PixelWidth * scale;
         var displayHeight = bitmap.PixelHeight * scale;
 
+        const double SizeTolerance = 0.001;
+
         if (!double.IsFinite(displayWidth) ||
             displayWidth <= 0 ||
             !double.IsFinite(displayHeight) ||
             displayHeight <= 0 ||
-            displayWidth > MaxOverlayWidth ||
-            displayHeight > MaxOverlayHeight)
+            displayWidth > MaxOverlayWidth + SizeTolerance ||
+            displayHeight > MaxOverlayHeight + SizeTolerance)
         {
             return;
         }
+
+        displayWidth = Math.Min(displayWidth, MaxOverlayWidth);
+        displayHeight = Math.Min(displayHeight, MaxOverlayHeight);
 
         Width = displayWidth;
         Height = displayHeight;
