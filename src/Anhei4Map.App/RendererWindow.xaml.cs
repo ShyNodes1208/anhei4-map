@@ -681,9 +681,7 @@ public partial class RendererWindow : Window
 
     public async Task<bool> ReloadPageAsync()
     {
-        if (_isClosed ||
-            webView.CoreWebView2 == null ||
-            !_navigationCompletedSuccessfully)
+        if (_isClosed || webView.CoreWebView2 == null)
         {
             return false;
         }
@@ -696,17 +694,29 @@ public partial class RendererWindow : Window
             tcs.TrySetResult(e.IsSuccess);
         }
 
-        webView.CoreWebView2.NavigationCompleted += OnNavCompleted;
-        webView.CoreWebView2.Reload();
-
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(30)));
-        if (completed != tcs.Task)
+        try
         {
-            webView.CoreWebView2.NavigationCompleted -= OnNavCompleted;
+            webView.CoreWebView2.NavigationCompleted += OnNavCompleted;
+            webView.CoreWebView2.Reload();
+
+            var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(30)));
+            if (completed != tcs.Task)
+            {
+                webView.CoreWebView2.NavigationCompleted -= OnNavCompleted;
+                return false;
+            }
+
+            return await tcs.Task;
+        }
+        catch
+        {
+            if (webView.CoreWebView2 != null)
+            {
+                webView.CoreWebView2.NavigationCompleted -= OnNavCompleted;
+            }
+
             return false;
         }
-
-        return await tcs.Task;
     }
 
     public async Task<BitmapSource?> CaptureAndCropMapAsync()
