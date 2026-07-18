@@ -17,7 +17,7 @@ public partial class App : Application
     private int _initialCaptureStarted;
 
     private DispatcherTimer? _hourlyRefreshTimer;
-    private bool _hourlyRefreshInProgress;
+    private bool _refreshInProgress;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -164,13 +164,13 @@ public partial class App : Application
     {
         _hourlyRefreshTimer?.Stop();
 
-        if (_hourlyRefreshInProgress)
+        if (_refreshInProgress)
         {
             ScheduleNextHourlyRefresh();
             return;
         }
 
-        _hourlyRefreshInProgress = true;
+        _refreshInProgress = true;
         try
         {
             if (_rendererWindow == null || _overlayWindow == null)
@@ -184,18 +184,40 @@ public partial class App : Application
                 return;
             }
 
-            var bitmap = await _rendererWindow.CaptureAndCropMapAsync();
-            if (bitmap != null)
+            const int maxAttempts = 10;
+            const int warmupDelayMs = 10000;
+            const int retryDelayMs = 1000;
+
+            await Task.Delay(warmupDelayMs);
+
+            System.Windows.Media.Imaging.BitmapSource? bitmap = null;
+
+            for (var attempt = 0; attempt < maxAttempts; attempt++)
+            {
+                bitmap = await _rendererWindow.CaptureAndCropMapAsync();
+
+                if (bitmap is not null)
+                {
+                    break;
+                }
+
+                if (attempt < maxAttempts - 1)
+                {
+                    await Task.Delay(retryDelayMs);
+                }
+            }
+
+            if (bitmap is not null)
             {
                 _overlayWindow.UpdateMapImage(bitmap);
             }
         }
-        catch
+        catch (Exception)
         {
         }
         finally
         {
-            _hourlyRefreshInProgress = false;
+            _refreshInProgress = false;
             ScheduleNextHourlyRefresh();
         }
     }
