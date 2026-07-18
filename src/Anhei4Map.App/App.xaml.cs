@@ -44,21 +44,27 @@ public partial class App : Application
             return;
         }
 
-        string? version;
-        try
-        {
-            version = CoreWebView2Environment.GetAvailableBrowserVersionString();
-        }
-        catch (WebView2RuntimeNotFoundException)
+        var fixedRuntimePath = Path.Combine(
+            AppContext.BaseDirectory,
+            "WebView2Runtime");
+
+        var browserExePath = Path.Combine(fixedRuntimePath, "msedgewebview2.exe");
+        if (!File.Exists(browserExePath))
         {
             ShowRuntimeMissingDialog();
             Shutdown();
             return;
         }
-        catch (Exception ex) when (ex is not WebView2RuntimeNotFoundException)
+
+        string? version;
+        try
+        {
+            version = CoreWebView2Environment.GetAvailableBrowserVersionString(fixedRuntimePath);
+        }
+        catch (Exception ex)
         {
             MessageBox.Show(
-                $"WebView2 运行时检测失败：{ex.Message}",
+                $"WebView2 Fixed Runtime 验证失败：{ex.Message}",
                 "启动失败",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
@@ -299,9 +305,8 @@ public partial class App : Application
     private static void ShowRuntimeMissingDialog()
     {
         MessageBox.Show(
-            "Microsoft Edge WebView2 Runtime 未安装。\n\n" +
-            "请从以下链接下载 Evergreen Bootstrapper 后重试：\n\n" +
-            "https://go.microsoft.com/fwlink/p/?LinkId=2124703",
+            "便携包不完整，缺少 WebView2Runtime。\n\n" +
+            "请确保 WebView2Runtime 目录与 Anhei4Map.App.exe 位于同一文件夹，且包含 msedgewebview2.exe。",
             "缺少必需组件 — Anhei4Map",
             MessageBoxButton.OK,
             MessageBoxImage.Error);
