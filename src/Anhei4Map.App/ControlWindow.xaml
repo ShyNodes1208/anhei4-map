@@ -1,0 +1,21 @@
+<Window x:Class="Anhei4Map.App.ControlWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Anhei4Map"
+        WindowStyle="SingleBorderWindow"
+        ResizeMode="CanMinimize"
+        ShowInTaskbar="True"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="CenterScreen">
+    <StackPanel Margin="12">
+        <Button x:Name="RefreshButton"
+                Content="刷新"
+                Padding="24,8"
+                Margin="0,0,0,8"
+                Click="OnRefreshClick"/>
+        <Button x:Name="ExitButton"
+                Content="退出"
+                Padding="24,8"
+                Click="OnExitClick"/>
+    </StackPanel>
+</Window>

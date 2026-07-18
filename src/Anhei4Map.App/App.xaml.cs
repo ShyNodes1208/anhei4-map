@@ -15,6 +15,7 @@ public partial class App : Application
     private RendererWindow? _rendererWindow;
     private OverlayWindow? _overlayWindow;
     private int _initialCaptureStarted;
+    private ControlWindow? _controlWindow;
 
     private DispatcherTimer? _hourlyRefreshTimer;
     private bool _refreshInProgress;
@@ -74,6 +75,15 @@ public partial class App : Application
 
         var diagnoseMapViewport = e.Args.Any(static arg =>
             string.Equals(arg, "--diagnose-map-viewport", StringComparison.OrdinalIgnoreCase));
+
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
+        _controlWindow = new ControlWindow();
+        MainWindow = _controlWindow;
+        _controlWindow.ShowActivated = false;
+        _controlWindow.WindowState = WindowState.Minimized;
+        _controlWindow.RefreshRequested += OnManualRefreshRequested;
+        _controlWindow.Show();
 
         _rendererWindow = new RendererWindow(diagnoseMapViewport);
         _overlayWindow = new OverlayWindow();
@@ -173,44 +183,7 @@ public partial class App : Application
         _refreshInProgress = true;
         try
         {
-            if (_rendererWindow == null || _overlayWindow == null)
-            {
-                return;
-            }
-
-            var reloadOk = await _rendererWindow.ReloadPageAsync();
-            if (!reloadOk)
-            {
-                return;
-            }
-
-            const int maxAttempts = 10;
-            const int warmupDelayMs = 10000;
-            const int retryDelayMs = 1000;
-
-            await Task.Delay(warmupDelayMs);
-
-            System.Windows.Media.Imaging.BitmapSource? bitmap = null;
-
-            for (var attempt = 0; attempt < maxAttempts; attempt++)
-            {
-                bitmap = await _rendererWindow.CaptureAndCropMapAsync();
-
-                if (bitmap is not null)
-                {
-                    break;
-                }
-
-                if (attempt < maxAttempts - 1)
-                {
-                    await Task.Delay(retryDelayMs);
-                }
-            }
-
-            if (bitmap is not null)
-            {
-                _overlayWindow.UpdateMapImage(bitmap);
-            }
+            _ = await RefreshMapOnceAsync();
         }
         catch (Exception)
         {
@@ -222,6 +195,75 @@ public partial class App : Application
         }
     }
 
+    private async void OnManualRefreshRequested(object? sender, EventArgs e)
+    {
+        if (_refreshInProgress || _controlWindow == null)
+        {
+            return;
+        }
+
+        _refreshInProgress = true;
+        _controlWindow.SetRefreshEnabled(false);
+
+        try
+        {
+            _ = await RefreshMapOnceAsync();
+        }
+        catch (Exception)
+        {
+        }
+        finally
+        {
+            _refreshInProgress = false;
+            _controlWindow.SetRefreshEnabled(true);
+        }
+    }
+
+    private async Task<bool> RefreshMapOnceAsync()
+    {
+        if (_rendererWindow == null || _overlayWindow == null)
+        {
+            return false;
+        }
+
+        var reloadOk = await _rendererWindow.ReloadPageAsync();
+        if (!reloadOk)
+        {
+            return false;
+        }
+
+        const int maxAttempts = 10;
+        const int warmupDelayMs = 10000;
+        const int retryDelayMs = 1000;
+
+        await Task.Delay(warmupDelayMs);
+
+        System.Windows.Media.Imaging.BitmapSource? bitmap = null;
+
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            bitmap = await _rendererWindow.CaptureAndCropMapAsync();
+
+            if (bitmap is not null)
+            {
+                break;
+            }
+
+            if (attempt < maxAttempts - 1)
+            {
+                await Task.Delay(retryDelayMs);
+            }
+        }
+
+        if (bitmap is not null)
+        {
+            _overlayWindow.UpdateMapImage(bitmap);
+            return true;
+        }
+
+        return false;
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
         if (_hourlyRefreshTimer != null)
@@ -230,6 +272,14 @@ public partial class App : Application
             _hourlyRefreshTimer.Tick -= OnHourlyRefreshTick;
             _hourlyRefreshTimer = null;
         }
+
+        // 关闭所有窗口，确保进程完全退出
+        _controlWindow?.Close();
+        _overlayWindow?.Close();
+        _rendererWindow?.Close();
+        _controlWindow = null;
+        _overlayWindow = null;
+        _rendererWindow = null;
 
         try
         {
