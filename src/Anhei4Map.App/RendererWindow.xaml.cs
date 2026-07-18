@@ -1,4 +1,6 @@
 using System.IO;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -188,12 +190,124 @@ public partial class RendererWindow : Window
         }
     }
 
+    private static string GetFixedRuntimePath()
+    {
+        return Path.Combine(AppContext.BaseDirectory, "WebView2Runtime");
+    }
+
+    private static bool TryEnsureWebView2RuntimeAcl(string runtimePath, out string? errorMessage)
+    {
+        errorMessage = null;
+
+        // 仅 Windows 10（build < 22000）需要此 ACL 修复
+        // Windows 11（build >= 22000）自动具备所需权限
+        if (!OperatingSystem.IsWindows() ||
+            Environment.OSVersion.Version.Major != 10 ||
+            Environment.OSVersion.Version.Build >= 22000)
+        {
+            return true;
+        }
+
+        try
+        {
+            var directoryInfo = new DirectoryInfo(runtimePath);
+            var security = directoryInfo.GetAccessControl();
+            var rights = FileSystemRights.Read |
+                         FileSystemRights.ReadAndExecute |
+                         FileSystemRights.ListDirectory;
+            var inheritance = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+            var sids = new[] { "S-1-15-2-1", "S-1-15-2-2" };
+            var modified = false;
+
+            foreach (var sidValue in sids)
+            {
+                var sid = new SecurityIdentifier(sidValue);
+                if (HasEquivalentAllowRule(security, sid, rights, inheritance))
+                {
+                    continue;
+                }
+
+                var rule = new FileSystemAccessRule(
+                    sid,
+                    rights,
+                    inheritance,
+                    PropagationFlags.None,
+                    AccessControlType.Allow);
+
+                security.AddAccessRule(rule);
+                modified = true;
+            }
+
+            if (modified)
+            {
+                directoryInfo.SetAccessControl(security);
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            return false;
+        }
+    }
+
+    private static bool HasEquivalentAllowRule(
+        DirectorySecurity security,
+        SecurityIdentifier sid,
+        FileSystemRights rights,
+        InheritanceFlags inheritance)
+    {
+        foreach (FileSystemAccessRule rule in security.GetAccessRules(
+                     includeExplicit: true,
+                     includeInherited: true,
+                     targetType: typeof(SecurityIdentifier)))
+        {
+            if (rule.IdentityReference == sid &&
+                rule.AccessControlType == AccessControlType.Allow &&
+                (rule.FileSystemRights & rights) == rights &&
+                (rule.InheritanceFlags & inheritance) == inheritance)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private async Task InitializeWebViewAsync()
     {
         try
         {
             if (_isClosed)
             {
+                return;
+            }
+
+            var fixedRuntimePath = GetFixedRuntimePath();
+            var browserExePath = Path.Combine(fixedRuntimePath, "msedgewebview2.exe");
+
+            if (!File.Exists(browserExePath))
+            {
+                MessageBox.Show(
+                    "便携包不完整，缺少 WebView2Runtime。\n\n" +
+                    "请确保 WebView2Runtime 目录与 Anhei4Map.App.exe 位于同一文件夹，且包含 msedgewebview2.exe。",
+                    "启动失败 — Anhei4Map",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                Application.Current.Shutdown();
+                return;
+            }
+
+            if (!TryEnsureWebView2RuntimeAcl(fixedRuntimePath, out var aclError))
+            {
+                MessageBox.Show(
+                    "无法准备 WebView2 Fixed Runtime 目录权限。\n\n" +
+                    $"错误：{aclError}",
+                    "启动失败 — Anhei4Map",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                Application.Current.Shutdown();
                 return;
             }
 
@@ -205,7 +319,7 @@ public partial class RendererWindow : Window
             Directory.CreateDirectory(userDataFolder);
 
             var env = await CoreWebView2Environment.CreateAsync(
-                browserExecutableFolder: null,
+                browserExecutableFolder: fixedRuntimePath,
                 userDataFolder: userDataFolder,
                 options: null);
 
